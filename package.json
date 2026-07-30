@@ -108,7 +108,7 @@
     "framer-motion": "^12.38.0",
     "loglayer": "^9.1.0",
     "next": "^16.2.2",
-    "next-intl": "^4.8.3",
+    "next-intl": "^4.13.4",
     "pino": "^10.3.1",
     "stylelint": "^17.6.0",
     "updates": "^17.13.5"
