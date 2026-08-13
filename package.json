@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "app",
+    "apps",
     "tools",
     "tests",
     "messages",
@@ -14,15 +14,15 @@
     "package/cli"
   ],
   "scripts": {
-    "dev": "concurrently \"pnpm --filter app dev\" \"pnpm --filter server dev\"",
-    "dev:frontend": "pnpm --filter app dev",
+    "dev": "concurrently \"pnpm --filter apps dev\" \"pnpm --filter server dev\"",
+    "dev:frontend": "pnpm --filter apps dev",
     "dev:backend": "pnpm --filter server dev",
     "dev:cli": "pnpm --filter cli dev",
     "build": "pnpm -r build",
-    "build:frontend": "pnpm --filter app build",
+    "build:frontend": "pnpm --filter apps build",
     "build:backend": "pnpm --filter server build",
     "build:cli": "pnpm --filter cli build",
-    "start": "concurrently \"pnpm --filter app start\" \"pnpm --filter server start\"",
+    "start": "concurrently \"pnpm --filter apps start\" \"pnpm --filter server start\"",
     "lint": "pnpm -r lint",
     "lint:fix": "pnpm -r lint:fix",
     "typecheck": "pnpm -r typecheck",
