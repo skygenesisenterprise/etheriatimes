@@ -102,8 +102,6 @@ services:
       - gopkg:/go/pkg
       - certs:/certs
       - custom-templates:/templates
-      # Shared with media-server: worker writes .strm bridge files here.
-      - remote-media:/remote-media
     depends_on:
       postgresql:
         condition: service_healthy
@@ -272,9 +270,6 @@ volumes:
   pgadmin-data:
   uptime-kuma-data:
   cdn-data:
-  media-server-config:
-  media-server-cache:
-  remote-media:
 
 networks:
   etheriatimes:

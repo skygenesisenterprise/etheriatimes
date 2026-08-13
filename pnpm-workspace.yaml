@@ -1,7 +1,8 @@
 packages:
   - "apps"
-  - "package"
-  - "package/cli"
+  - "packages"
+  - "packages/cli"
+  - "packages/bot"
 
 ignoredBuiltDependencies:
   - sharp

@@ -154,24 +154,6 @@ func main() {
 	}
 
 	oauthService := services.NewOAuthService(cfg.OAuth, repos, authService, identityProvider, workspaceService, nil)
-
-
-	studioService := services.NewStudioService(repos)
-	watchService := services.NewWatchService(repos)
-	schedulingService := services.NewSchedulingService(repos)
-	notificationService := services.NewNotificationService(repos)
-	searchService := services.NewSearchService(repos)
-	settingsService := services.NewSettingsService(repos)
-	adminUserService := services.NewAdminUserService(repos)
-	adminProfileService := services.NewAdminProfileService(repos)
-	adminRoleService := services.NewAdminRoleService(repos)
-	adminPermissionService := services.NewAdminPermissionService(repos)
-	supportService := services.NewSupportService(repos)
-	contactAdminService := services.NewContactAdminService(repos)
-	moderationService := services.NewModerationService(repos)
-	notificationAdminService := services.NewNotificationAdminService(repos)
-	systemService := services.NewSystemService(db.Gorm(), redis)
-	settingsAdminService := services.NewSettingsAdminService(db.Gorm(), repos)
 	mfaService := services.NewMfaService(cfg.Auth, db, repos)
 
 	mode, err := parseRuntimeMode(os.Args[1:])
@@ -189,35 +171,19 @@ func main() {
 		_ = router.SetTrustedProxies(cfg.App.TrustedProxies)
 	}
 	routes.SetupRoutes(router, routes.Dependencies{
-		Config:                   cfg,
-		Logger:                   logger,
-		Database:                 db,
-		Redis:                    redis,
-		EventBus:                 eventBus,
-		IdentityProvider:         identityProvider,
-		AuthService:              authService,
-		OAuthService:             oauthService,
-		UserService:              userService,
-		WorkspaceService:         workspaceService,
-		Repos:                    repos,
-		StudioService:            studioService,
-		WatchService:             watchService,
-		SchedulingService:        schedulingService,
-		NotificationService:      notificationService,
-		SearchService:            searchService,
-		SettingsService:          settingsService,
-		AdminUserService:         adminUserService,
-		AdminProfileService:      adminProfileService,
-		AdminRoleService:         adminRoleService,
-		AdminPermissionService:   adminPermissionService,
-		SystemService:            systemService,
-		SupportService:           supportService,
-		ContactAdminService:      contactAdminService,
-		ModerationService:        moderationService,
-		NotificationAdminService: notificationAdminService,
-		SettingsAdminService:     settingsAdminService,
-		MfaService:               mfaService,
-		RuntimeRole:              string(mode),
+		Config:           cfg,
+		Logger:           logger,
+		Database:         db,
+		Redis:            redis,
+		EventBus:         eventBus,
+		IdentityProvider: identityProvider,
+		AuthService:      authService,
+		OAuthService:     oauthService,
+		UserService:      userService,
+		WorkspaceService: workspaceService,
+		Repos:            repos,
+		MfaService:       mfaService,
+		RuntimeRole:      string(mode),
 	})
 
 	if err := runHTTPServer(ctx, logger, cfg, router, mode); err != nil {
