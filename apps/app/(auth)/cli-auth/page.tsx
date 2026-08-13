@@ -9,7 +9,7 @@ import { getStoredUser, refreshAccessToken } from '@/lib/api/auth'
  * CLI SSO callback page.
  *
  * Flow:
- *  1. `kami auth sso` starts a local HTTP server on port PORT
+ *  1. `Etheria Times sso` starts a local HTTP server on port PORT
  *  2. Opens browser to this page: /cli-auth?port=PORT&state=RANDOM
  *  3. If user is already logged in (session cookie), we post the token back
  *  4. If not, redirect to /login with a redirect back to this page

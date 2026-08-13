@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,10 +19,20 @@ import {
   Trash2,
   Filter,
   Terminal,
-  Terminal as TerminalIcon,
+  Play,
+  Pause,
 } from "lucide-react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { dockerApi } from "@/lib/api/docker";
+
+// Services defined in docker-compose.yml
+const DOCKER_SERVICES = [
+  { id: "server", name: "Frontend", description: "Next.js server", icon: "🌐" },
+  { id: "worker", name: "API Worker", description: "Go backend", icon: "⚙️" },
+  { id: "postgresql", name: "PostgreSQL", description: "Database", icon: "🐘" },
+  { id: "redis", name: "Redis", description: "Cache & sessions", icon: "🔴" },
+  { id: "rabbitmq", name: "RabbitMQ", description: "Message broker", icon: "🐰" },
+  { id: "meilisearch", name: "Meilisearch", description: "Search engine", icon: "🔍" },
+] as const;
 
 interface LogEntry {
   id: string;
@@ -30,144 +40,166 @@ interface LogEntry {
   level: "info" | "warn" | "error" | "debug";
   message: string;
   service: string;
+  raw: string;
 }
 
-const mockLogs: LogEntry[] = [
-  {
-    id: "1",
-    timestamp: "2026-03-27T14:30:00Z",
-    level: "info",
-    message: "Server started on port 8080",
-    service: "api",
-  },
-  {
-    id: "2",
-    timestamp: "2026-03-27T14:30:01Z",
-    level: "info",
-    message: "Database connected successfully",
-    service: "api",
-  },
-  {
-    id: "3",
-    timestamp: "2026-03-27T14:30:02Z",
-    level: "info",
-    message: "Next.js dev server started on port 3000",
-    service: "frontend",
-  },
-  {
-    id: "4",
-    timestamp: "2026-03-27T14:31:00Z",
-    level: "warn",
-    message: "JWT_SECRET not set, using default",
-    service: "api",
-  },
-  {
-    id: "5",
-    timestamp: "2026-03-27T14:32:00Z",
-    level: "error",
-    message: "Connection timeout to external API",
-    service: "api",
-  },
-  {
-    id: "6",
-    timestamp: "2026-03-27T14:33:00Z",
-    level: "info",
-    message: "Health check endpoint called",
-    service: "api",
-  },
-  {
-    id: "7",
-    timestamp: "2026-03-27T14:34:00Z",
-    level: "debug",
-    message: "Rendering page: /fr",
-    service: "frontend",
-  },
-  {
-    id: "8",
-    timestamp: "2026-03-27T14:35:00Z",
-    level: "info",
-    message: "User logged in successfully",
-    service: "api",
-  },
-];
+function parseLogLine(line: string, service: string): LogEntry {
+  // Try to parse structured log format: [TIMESTAMP] [LEVEL] message
+  const structuredMatch = line.match(
+    /^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\]]*)\]?\s*\[?(\w+)\]?\s*(.*)$/i
+  );
+
+  if (structuredMatch) {
+    const level = structuredMatch[2].toLowerCase();
+    const validLevels = ["info", "warn", "error", "debug"];
+    return {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: structuredMatch[1],
+      level: validLevels.includes(level) ? (level as LogEntry["level"]) : "info",
+      message: structuredMatch[3],
+      service,
+      raw: line,
+    };
+  }
+
+  // Try JSON log format: {"time":"...","level":"...","msg":"..."}
+  try {
+    const json = JSON.parse(line);
+    if (json.time && json.level && json.msg) {
+      const level = json.level.toLowerCase();
+      const validLevels = ["info", "warn", "error", "debug"];
+      return {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: json.time,
+        level: validLevels.includes(level) ? (level as LogEntry["level"]) : "info",
+        message: json.msg,
+        service,
+        raw: line,
+      };
+    }
+  } catch {
+    // Not JSON
+  }
+
+  // Fallback: detect level from content
+  const lowerLine = line.toLowerCase();
+  let level: LogEntry["level"] = "info";
+  if (lowerLine.includes("error") || lowerLine.includes("panic") || lowerLine.includes("fatal")) {
+    level = "error";
+  } else if (lowerLine.includes("warn") || lowerLine.includes("deprecated")) {
+    level = "warn";
+  } else if (lowerLine.includes("debug") || lowerLine.includes("trace")) {
+    level = "debug";
+  }
+
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    level,
+    message: line,
+    service,
+    raw: line,
+  };
+}
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
-  const [isLoading, setIsLoading] = useState(false);
+  const [selectedServices, setSelectedServices] = useState<string[]>(["server", "worker"]);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [terminalOpen, setTerminalOpen] = useState(false);
-  const [terminalOutput, setTerminalOutput] = useState("");
-  const [terminalCommand, setTerminalCommand] = useState("");
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [lastUpdated, setLastUpdated] = useState("");
+  const [serviceStatuses, setServiceStatuses] = useState<Record<string, boolean>>({});
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const fetchedIdsRef = useRef<Set<string>>(new Set());
 
-  const fetchLogs = async () => {
-    try {
-      setIsLoading(true);
-      const response = await dockerApi.getLogs("etheriatimes", 100);
-      const logsData = response.data?.logs || response.logs || [];
-      if (response.success && logsData.length > 0) {
-        const parsedLogs: LogEntry[] = logsData.map((log: string, index: number) => {
-          const match = log.match(
-            /^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\]]*)\]?\s*\[?(\w+)\]?\s*(.*)$/
-          );
-          return {
-            id: `${Date.now()}-${index}`,
-            timestamp: match ? match[1] : new Date().toISOString(),
-            level: (match ? match[2].toLowerCase() : "info") as LogEntry["level"],
-            message: match ? match[3] : log,
-            service:
-              log.includes("Next.js") || log.includes("next") || log.includes("Next")
-                ? "frontend"
-                : "api",
-          };
-        });
-        setLogs(parsedLogs);
-        setIsConnected(true);
-      } else {
-        setIsConnected(false);
+  const fetchServiceLogs = useCallback(
+    async (serviceId: string) => {
+      try {
+        const response = await dockerApi.getLogs(serviceId, 50);
+        if (response.success) {
+          const rawLogs = response.data?.logs || response.logs || [];
+          const parsed = rawLogs
+            .filter((line: string) => {
+              const entry = parseLogLine(line, serviceId);
+              if (fetchedIdsRef.current.has(entry.raw + entry.service)) return false;
+              fetchedIdsRef.current.add(entry.raw + entry.service);
+              return true;
+            })
+            .map((line: string) => parseLogLine(line, serviceId));
+
+          setServiceStatuses((prev) => ({ ...prev, [serviceId]: true }));
+          return parsed;
+        }
+        setServiceStatuses((prev) => ({ ...prev, [serviceId]: false }));
+        return [];
+      } catch {
+        setServiceStatuses((prev) => ({ ...prev, [serviceId]: false }));
+        return [];
       }
-    } catch {
-      setIsConnected(false);
-    } finally {
-      setIsLoading(false);
+    },
+    []
+  );
+
+  const fetchAllLogs = useCallback(async () => {
+    const allLogs: LogEntry[] = [];
+    for (const serviceId of selectedServices) {
+      const serviceLogs = await fetchServiceLogs(serviceId);
+      allLogs.push(...serviceLogs);
     }
-  };
+    if (allLogs.length > 0) {
+      setLogs((prev) => {
+        const combined = [...allLogs, ...prev];
+        // Keep only last 500 entries
+        return combined.slice(0, 500);
+      });
+    }
+    setLastUpdated(new Date().toLocaleTimeString("fr-FR"));
+  }, [selectedServices, fetchServiceLogs]);
 
   useEffect(() => {
-    fetchLogs();
-    setLastUpdated(new Date().toLocaleTimeString("fr-FR"));
-  }, []);
+    fetchedIdsRef.current.clear();
+    setLogs([]);
+    fetchAllLogs();
+  }, [selectedServices]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isLoading) return;
-    setLastUpdated(new Date().toLocaleTimeString("fr-FR"));
-  }, [logs, isLoading]);
+    if (!autoRefresh) return;
+    const interval = setInterval(fetchAllLogs, 3000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchAllLogs]);
+
+  // Auto-scroll to top when new logs arrive
+  useEffect(() => {
+    if (logContainerRef.current && logs.length > 0) {
+      logContainerRef.current.scrollTop = 0;
+    }
+  }, [logs.length]);
 
   const filteredLogs = logs.filter((log) => {
-    const matchesSearch = log.message.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = !searchQuery || log.message.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesLevel = levelFilter === "all" || log.level === levelFilter;
     const matchesService = serviceFilter === "all" || log.service === serviceFilter;
     return matchesSearch && matchesLevel && matchesService;
   });
 
-  const handleRefresh = async () => {
-    await fetchLogs();
+  const toggleService = (serviceId: string) => {
+    setSelectedServices((prev) =>
+      prev.includes(serviceId)
+        ? prev.filter((id) => id !== serviceId)
+        : [...prev, serviceId]
+    );
   };
 
   const handleClear = () => {
     setLogs([]);
+    fetchedIdsRef.current.clear();
   };
 
   const handleDownload = () => {
     const content = filteredLogs
-      .map(
-        (log) => `[${log.timestamp}] [${log.level.toUpperCase()}] [${log.service}] ${log.message}`
-      )
+      .map((log) => `[${log.timestamp}] [${log.level.toUpperCase()}] [${log.service}] ${log.message}`)
       .join("\n");
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -178,61 +210,29 @@ export default function LogsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleExecuteCommand = async () => {
-    if (!terminalCommand.trim()) return;
-    setIsExecuting(true);
-    const cmd = terminalCommand;
-    setTerminalOutput((prev) => prev + `\n$ ${cmd}\n`);
-
-    if (cmd === "clear") {
-      setTerminalOutput("");
-      setTerminalCommand("");
-      setIsExecuting(false);
-      return;
-    }
-
-    try {
-      const response = await dockerApi.execCommand(cmd, "etheriatimes");
-      setTerminalOutput((prev) => prev + (response.output || "(no output)\n"));
-      if (!response.success) {
-        setTerminalOutput((prev) => prev + `Error: Command failed\n`);
-      }
-    } catch {
-      setTerminalOutput((prev) => prev + `Failed to execute command\n`);
-    }
-
-    setTerminalCommand("");
-    setIsExecuting(false);
-  };
-
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [autoRefresh]);
-
-  const getLevelBadge = (level: string) => {
-    const variants: Record<string, string> = {
-      info: "bg-blue-100 text-blue-800",
-      warn: "bg-yellow-100 text-yellow-800",
-      error: "bg-red-100 text-red-800",
-      debug: "bg-gray-100 text-gray-800",
+  const getLevelColor = (level: string) => {
+    const colors: Record<string, string> = {
+      info: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+      warn: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+      error: "bg-red-500/15 text-red-400 border-red-500/30",
+      debug: "bg-gray-500/15 text-gray-400 border-gray-500/30",
     };
-    return variants[level] || "bg-gray-100 text-gray-800";
+    return colors[level] || colors.info;
   };
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Logs</h1>
           <p className="text-sm text-muted-foreground">
-            Consultation des logs en temps réel des services Docker
+            Logs en temps réel des services Docker Compose
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="sm" onClick={fetchAllLogs}>
+            <RefreshCw className="h-4 w-4 mr-2" />
             Actualiser
           </Button>
           <Button variant="outline" size="sm" onClick={handleDownload}>
@@ -243,34 +243,92 @@ export default function LogsPage() {
             <Trash2 className="h-4 w-4 mr-2" />
             Effacer
           </Button>
-          <Button variant="default" size="sm" onClick={() => setTerminalOpen(true)}>
-            <TerminalIcon className="h-4 w-4 mr-2" />
-            Terminal
-          </Button>
         </div>
       </div>
 
+      {/* Service selection */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Terminal className="h-4 w-4" />
-              <CardTitle className="text-base">Console Docker</CardTitle>
+              <CardTitle className="text-base">Services Docker</CardTitle>
             </div>
-            <Badge
-              variant="outline"
-              className={isConnected ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
-            >
-              <span
-                className={`w-2 h-2 rounded-full mr-2 ${isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
-              />
-              {isConnected ? "Connecté" : "Déconnecté"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {Object.values(serviceStatuses).filter(Boolean).length}/{DOCKER_SERVICES.length} connectés
+              </span>
+            </div>
           </div>
-          <CardDescription>Container: etheriatimes</CardDescription>
+          <CardDescription>
+            Sélectionnez les services à monitorer
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            {DOCKER_SERVICES.map((service) => {
+              const isSelected = selectedServices.includes(service.id);
+              const isConnected = serviceStatuses[service.id];
+              return (
+                <button
+                  key={service.id}
+                  onClick={() => toggleService(service.id)}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all ${
+                    isSelected
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  <span>{service.icon}</span>
+                  <span>{service.name}</span>
+                  {isConnected !== undefined && (
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        isConnected ? "bg-green-500" : "bg-red-500"
+                      }`}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Logs console */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-base">Console</CardTitle>
+              <CardDescription>
+                {filteredLogs.length} entrées • Dernière mise à jour: {lastUpdated || "—"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+                    autoRefresh
+                      ? "bg-green-500/15 text-green-400"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {autoRefresh ? (
+                    <Pause className="h-3 w-3" />
+                  ) : (
+                    <Play className="h-3 w-3" />
+                  )}
+                  {autoRefresh ? "En direct" : "Pause"}
+                </button>
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row">
+          {/* Filters */}
+          <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -281,12 +339,12 @@ export default function LogsPage() {
               />
             </div>
             <Select value={levelFilter} onValueChange={setLevelFilter}>
-              <SelectTrigger className="w-37.5">
+              <SelectTrigger className="w-full sm:w-36">
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Niveau" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tous les niveaux</SelectItem>
+                <SelectItem value="all">Tous</SelectItem>
                 <SelectItem value="info">Info</SelectItem>
                 <SelectItem value="warn">Warning</SelectItem>
                 <SelectItem value="error">Error</SelectItem>
@@ -294,186 +352,63 @@ export default function LogsPage() {
               </SelectContent>
             </Select>
             <Select value={serviceFilter} onValueChange={setServiceFilter}>
-              <SelectTrigger className="w-37.5">
+              <SelectTrigger className="w-full sm:w-36">
                 <SelectValue placeholder="Service" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tous les services</SelectItem>
-                <SelectItem value="api">API (Go)</SelectItem>
-                <SelectItem value="frontend">Frontend (Next.js)</SelectItem>
+                <SelectItem value="all">Tous</SelectItem>
+                {DOCKER_SERVICES.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.icon} {s.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="autoRefresh"
-                checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <label htmlFor="autoRefresh" className="text-sm text-muted-foreground">
-                Auto-refresh
-              </label>
-            </div>
           </div>
 
-          <div className="rounded-md border bg-card">
-            <div className="max-h-125 overflow-y-auto font-mono text-xs">
-              {filteredLogs.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">Aucun log trouvé</div>
-              ) : (
-                <table className="w-full">
-                  <thead className="sticky top-0 bg-muted">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Horodatage</th>
-                      <th className="text-left p-2 font-medium">Niveau</th>
-                      <th className="text-left p-2 font-medium">Service</th>
-                      <th className="text-left p-2 font-medium">Message</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLogs.map((log) => (
-                      <tr key={log.id} className="border-t">
-                        <td className="p-2 text-muted-foreground whitespace-nowrap">
-                          {new Date(log.timestamp).toLocaleString("fr-FR")}
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={`px-2 py-0.5 rounded text-xs font-medium ${getLevelBadge(log.level)}`}
-                          >
-                            {log.level.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="p-2 text-muted-foreground">{log.service}</td>
-                        <td className="p-2">{log.message}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{filteredLogs.length} entrées</span>
-            <span>Dernière mise à jour: {lastUpdated || "--:--:--"}</span>
+          {/* Log entries */}
+          <div
+            ref={logContainerRef}
+            className="rounded-md border bg-[#1e1e1e] max-h-[500px] overflow-y-auto"
+          >
+            {filteredLogs.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <Terminal className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>Aucun log trouvé</p>
+                <p className="text-xs mt-1">
+                  Sélectionnez un service et activez l&apos;auto-refresh
+                </p>
+              </div>
+            ) : (
+              <div className="font-mono text-xs">
+                {filteredLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex gap-3 border-b border-[#2d2d2d] px-4 py-1.5 hover:bg-[#2a2d2e]"
+                  >
+                    <span className="text-[#6a9955] whitespace-nowrap shrink-0">
+                      {new Date(log.timestamp).toLocaleTimeString("fr-FR")}
+                    </span>
+                    <span className="shrink-0">
+                      <span
+                        className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${getLevelColor(
+                          log.level
+                        )}`}
+                      >
+                        {log.level.toUpperCase()}
+                      </span>
+                    </span>
+                    <span className="text-[#569cd6] whitespace-nowrap shrink-0">
+                      [{DOCKER_SERVICES.find((s) => s.id === log.service)?.name || log.service}]
+                    </span>
+                    <span className="text-[#d4d4d4] break-all">{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
-
-      <Dialog open={terminalOpen} onOpenChange={setTerminalOpen}>
-        <DialogContent className="max-w-[95vw] w-350 h-100 p-0 gap-0">
-          <DialogTitle className="sr-only">Terminal Docker - etheriatimes</DialogTitle>
-          <div className="bg-[#252526] rounded-t-lg px-4 py-2 flex items-center justify-between border-b border-[#3c3c3c]">
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-[#ff5f56]" />
-                <div className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
-                <div className="w-3 h-3 rounded-full bg-[#27c93f]" />
-              </div>
-              <span className="text-[#858585] text-xs">bash — 80×24</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Select defaultValue="etheriatimes">
-                <SelectTrigger className="w-45 h-7 bg-[#3c3c3c] border-[#3c3c3c] text-xs text-[#cccccc]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="etheriatimes">etheriatimes</SelectItem>
-                  <SelectItem value="etheria-db">etheria-db</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex-1 flex flex-col bg-[#1e1e1e] min-h-0">
-            <div
-              className="flex-1 p-4 font-mono text-sm overflow-y-auto scrollbar-thin scrollbar-thumb-[#3c3c3c] scrollbar-track-transparent"
-              style={{ fontFamily: "'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace" }}
-              onClick={() => {
-                const input = document.getElementById("terminal-input");
-                input?.focus();
-              }}
-            >
-              <div className="space-y-1">
-                <div className="text-[#569cd6] text-xs mb-4">
-                  <pre className="whitespace-pre-wrap">{`  ____              _      ____            _        _   _______          _ _ 
- | __ )  ___   ___| | __ |  _ \\ ___ _ __ | |_ __ _| | |_   _|__  ___| | |
- |  _ \\ / _ \\ / __| |/ / | |_) / _ \\ '_ \\| __/ _\` | |   | |/ _ \\/ __| | |
- | |_) | (_) | (__|   <  |  _ <  __/ | | | || (_| | |   | | (_) \\__ \\ |_|
- |____/ \\___/ \\___|_|\\_\\ |_| \\_\\___|_| |_|\\__\\__,_|_|   |_|\\___/|___/(_)
-                                                                   
-Welcome to Docker Terminal - Etheria Times
-Type 'help' to see available commands, 'clear' to clear terminal`}</pre>
-                </div>
-                {terminalOutput.split("\n").map((line, i) => (
-                  <div key={i} className="whitespace-pre-wrap">
-                    {line.startsWith("$ ") ? (
-                      <span>{line}</span>
-                    ) : line.startsWith("root@") ? (
-                      <span className="text-[#4ec9b0]">
-                        {line.split("@")[0]}
-                        <span className="text-[#9cdcfe]">@{line.split("@")[1]}</span>
-                      </span>
-                    ) : line.includes("not found") ||
-                      line.includes("error") ||
-                      line.includes("Error") ? (
-                      <span className="text-[#f44747]">{line}</span>
-                    ) : line.includes("warning") || line.includes("Warning") ? (
-                      <span className="text-[#dcdcaa]">{line}</span>
-                    ) : (
-                      <span className="text-[#d4d4d4]">{line}</span>
-                    )}
-                  </div>
-                ))}
-                <div className="flex items-center gap-1">
-                  <span className="text-[#4ec9b0]">root</span>
-                  <span className="text-[#9cdcfe]">@</span>
-                  <span className="text-[#4ec9b0]">etheriatimes</span>
-                  <span className="text-[#d4d4d4]">:</span>
-                  <span className="text-[#569cd6]">~</span>
-                  <span className="text-[#d4d4d4]">$</span>
-                  <input
-                    id="terminal-input"
-                    type="text"
-                    value={terminalCommand}
-                    onChange={(e) => setTerminalCommand(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleExecuteCommand();
-                    }}
-                    disabled={isExecuting}
-                    className="flex-1 bg-transparent border-none outline-none text-[#d4d4d4] focus:ring-0 caret-[#d4d4d4]"
-                    autoFocus
-                    spellCheck={false}
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-[#3c3c3c] px-4 py-1 flex items-center justify-between bg-[#252526] text-xs text-[#858585]">
-              <div className="flex items-center gap-4">
-                <span>
-                  Container: <span className="text-[#cccccc]">etheriatimes</span>
-                </span>
-                <span>
-                  Image: <span className="text-[#cccccc]">etheria-dev:latest</span>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTerminalOutput("")}
-                  className="h-6 text-xs text-[#858585] hover:text-[#cccccc]"
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

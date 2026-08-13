@@ -63,5 +63,15 @@ func (d *DatabaseService) AutoMigrate() error {
 		&models.UserRole{},
 		&models.MfaSecret{},
 		&models.MfaRecoveryCode{},
+		&models.Article{},
+		&models.ArticleTag{},
+		&models.Category{},
+		&models.Tag{},
+		&models.Media{},
+		&models.Webhook{},
+		&models.WebhookDelivery{},
+		&models.SeoConfig{},
+		&models.NewsletterSubscriber{},
+		&models.Schedule{},
 	)
 }

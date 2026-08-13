@@ -1,9 +1,8 @@
-const DEFAULT_PUBLIC_API_PATH = "/api/v1";
-const DEFAULT_PUBLIC_REALTIME_PATH = "/api/v1/realtime/ws";
-const DEFAULT_EXPO_DEV_API_URL = "http://meet.skygenesisenterprise.localhost/api/v1";
+const DEFAULT_PUBLIC_API_URL = "http://api.etheriatimes.localhost/api/v1";
+const DEFAULT_PUBLIC_REALTIME_URL = "ws://api.etheriatimes.localhost/api/v1/realtime/ws";
 const DEFAULT_TIMEOUT_MS = 15_000;
-const DOCKER_HOST_PATTERN = /(^|\.)((server|worker|webrtc|livekit|postgresql|redis))$/i;
-const PRIVATE_IPV4_PATTERN = /^(?:10|127|169\.254|172\.(?:1[6-9]|2\d|3[0-1])|192\.168)\./;
+const DOCKER_HOST_PATTERN = /^host\.docker\.internal$/i;
+const PRIVATE_IPV4_PATTERN = /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/;
 
 function normalizeBaseUrl(value: string, fallback: string): string {
   const trimmed = value.trim();
@@ -66,62 +65,20 @@ function parseUrl(value: string): URL | null {
   }
 }
 
-/**
- * On the client, derive the API base URL.
- *
- * When no explicit env-var is set we use a relative path (/api/v1) so that
- * every subdomain (sso., studios., main) talks to the same-origin Next.js
- * server which proxies /api/* → the Go backend at localhost:8080.
- * This avoids CORS issues entirely and lets the browser send auth cookies
- * (domain=.kami-sama.localhost) automatically.
- *
- * If NEXT_PUBLIC_API_URL is set (e.g. for Expo / staging / production
- * deployments where the API is on a separate origin), honour it instead.
- */
-function getClientApiBaseUrl(): string {
-  // Honour an explicit env-var override first (e.g. for Expo / staging).
-  const envUrl =
-    process.env.EXPO_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_URL;
-  if (envUrl && /^https?:\/\//.test(envUrl)) {
-    return normalizeBaseUrl(envUrl, DEFAULT_PUBLIC_API_PATH);
-  }
-
-  // Use a relative path so requests go through the Next.js proxy rewrite
-  // (next.config.ts rewrites /api/* → http://localhost:8080/api/*).
-  // This is same-origin from the browser's perspective — no CORS.
-  return DEFAULT_PUBLIC_API_PATH;
-}
-
 export function getApiBaseUrl(): string {
-  if (typeof window === "undefined") {
-    return normalizeBaseUrl(
-      process.env.API_INTERNAL_URL ??
-        process.env.EXPO_PUBLIC_API_URL ??
-        process.env.NEXT_PUBLIC_API_URL ??
-        (isExpoRuntime() && !isProductionRuntime() ? DEFAULT_EXPO_DEV_API_URL : DEFAULT_PUBLIC_API_PATH),
-      DEFAULT_PUBLIC_API_PATH
-    );
-  }
-
-  return getClientApiBaseUrl();
+  return normalizeBaseUrl(
+    process.env.EXPO_PUBLIC_API_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      DEFAULT_PUBLIC_API_URL,
+    DEFAULT_PUBLIC_API_URL
+  );
 }
 
 export function getRealtimeUrl(): string {
-  const configured = normalizeBaseUrl(
-    process.env.NEXT_PUBLIC_REALTIME_URL ?? DEFAULT_PUBLIC_REALTIME_PATH,
-    DEFAULT_PUBLIC_REALTIME_PATH
+  return normalizeBaseUrl(
+    process.env.NEXT_PUBLIC_REALTIME_URL ?? DEFAULT_PUBLIC_REALTIME_URL,
+    DEFAULT_PUBLIC_REALTIME_URL
   );
-
-  if (configured.startsWith("ws://") || configured.startsWith("wss://")) {
-    return configured;
-  }
-
-  if (typeof window === "undefined") {
-    return configured;
-  }
-
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${configured.startsWith("/") ? configured : `/${configured}`}`;
 }
 
 export function getRequestTimeoutMs(): number {
@@ -182,10 +139,5 @@ export function joinApiPath(path: string): string {
 
   const baseUrl = getApiBaseUrl();
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  if (baseUrl.startsWith("http://") || baseUrl.startsWith("https://")) {
-    return `${baseUrl}${normalizedPath}`;
-  }
-
   return `${baseUrl}${normalizedPath}`;
 }

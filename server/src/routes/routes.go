@@ -42,7 +42,7 @@ func SetupRoutes(router *gin.Engine, deps Dependencies) {
 	api := router.Group("/api/v1")
 	api.GET("/health", handler.health)
 	api.GET("/ready", handler.ready)
-	api.POST("/webhooks/:provider/:integrationId", handler.webhook)
+	api.POST("/integrations/webhooks/:provider/:integrationId", handler.webhook)
 
 	auth := api.Group("/auth")
 	{
@@ -100,6 +100,68 @@ func SetupRoutes(router *gin.Engine, deps Dependencies) {
 		protected.POST("/workspaces/:workspaceId/members/provision", handler.provisionWorkspaceUser)
 		protected.PATCH("/workspaces/:workspaceId/members/:userId", handler.updateWorkspaceMember)
 		protected.DELETE("/workspaces/:workspaceId/members/:userId", handler.deleteWorkspaceMember)
+
+		// Articles (slug route must come before :id to avoid conflict)
+		protected.GET("/articles", handler.listArticles)
+		protected.POST("/articles", handler.createArticle)
+		protected.GET("/articles/slug/:slug", handler.getArticleBySlug)
+		protected.GET("/articles/:id", handler.getArticle)
+		protected.PATCH("/articles/:id", handler.updateArticle)
+		protected.DELETE("/articles/:id", handler.deleteArticle)
+		protected.POST("/articles/:id/publish", handler.publishArticle)
+		protected.POST("/articles/:id/schedule", handler.scheduleArticle)
+		protected.POST("/articles/:id/archive", handler.archiveArticle)
+
+		// Categories
+		protected.GET("/categories", handler.listCategories)
+		protected.POST("/categories", handler.createCategory)
+		protected.GET("/categories/:id", handler.getCategory)
+		protected.PATCH("/categories/:id", handler.updateCategory)
+		protected.DELETE("/categories/:id", handler.deleteCategory)
+
+		// Media
+		protected.GET("/media", handler.listMedia)
+		protected.POST("/media", handler.createMedia)
+		protected.GET("/media/:id", handler.getMedia)
+		protected.PATCH("/media/:id", handler.updateMedia)
+		protected.DELETE("/media/:id", handler.deleteMedia)
+
+		// Webhooks
+		protected.GET("/webhooks", handler.listWebhooks)
+		protected.POST("/webhooks", handler.createWebhook)
+		protected.GET("/webhooks/:id", handler.getWebhook)
+		protected.PATCH("/webhooks/:id", handler.updateWebhook)
+		protected.DELETE("/webhooks/:id", handler.deleteWebhook)
+		protected.POST("/webhooks/:id/test", handler.testWebhook)
+
+		// SEO
+		protected.GET("/seo", handler.listSeoConfigs)
+		protected.GET("/seo/config", handler.getSeoConfig)
+		protected.POST("/seo/config", handler.upsertSeoConfig)
+
+		// Newsletter
+		protected.GET("/newsletter/subscribers", handler.listNewsletterSubscribers)
+		protected.POST("/newsletter/subscribe", handler.subscribeNewsletter)
+		protected.DELETE("/newsletter/unsubscribe", handler.unsubscribeNewsletter)
+
+		// Schedule
+		protected.GET("/schedule", handler.listSchedules)
+		protected.POST("/schedule", handler.createSchedule)
+		protected.GET("/schedule/:id", handler.getSchedule)
+		protected.POST("/schedule/:id/cancel", handler.cancelSchedule)
+		protected.DELETE("/schedule/:id", handler.deleteSchedule)
+
+		// Admin Docker
+		protected.GET("/admin/docker/containers", handler.listDockerContainers)
+		protected.GET("/admin/docker/logs", handler.getDockerLogs)
+		protected.GET("/admin/docker/logs/stream", handler.streamDockerLogs)
+		protected.POST("/admin/docker/exec", handler.execDockerCommand)
+		protected.GET("/admin/docker/updates", handler.checkDockerUpdates)
+		protected.POST("/admin/docker/update", handler.updateDockerContainer)
+
+		// Admin Settings
+		protected.GET("/admin/settings", handler.getAdminSettings)
+		protected.PATCH("/admin/settings", handler.updateAdminSettings)
 	}
 }
 

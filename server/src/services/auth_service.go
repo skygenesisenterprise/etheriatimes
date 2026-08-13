@@ -640,8 +640,32 @@ func (s *AuthService) resolvePrimaryWorkspace(ctx context.Context, userID string
 	if err != nil {
 		return nil, nil, nil, err
 	}
+
+	// Merge workspace role with global roles from user_roles table
 	roles := []string{member.Role}
-	return &workspaces[0].ID, roles, roleToPermissions(member.Role), nil
+	seen := map[string]bool{member.Role: true}
+	globalRoles, _ := s.repos.UserRoles().ListByUser(ctx, userID)
+	for _, ur := range globalRoles {
+		role, rErr := s.repos.Roles().GetByID(ctx, ur.RoleID)
+		if rErr == nil && !seen[role.Slug] {
+			roles = append(roles, role.Slug)
+			seen[role.Slug] = true
+		}
+	}
+
+	// Compute merged permissions from all roles
+	permissions := make(map[string]bool)
+	for _, role := range roles {
+		for _, p := range roleToPermissions(role) {
+			permissions[p] = true
+		}
+	}
+	mergedPermissions := make([]string, 0, len(permissions))
+	for p := range permissions {
+		mergedPermissions = append(mergedPermissions, p)
+	}
+
+	return &workspaces[0].ID, roles, mergedPermissions, nil
 }
 
 func workspaceRoleAndPermissions(userID string, workspaceID *string, repos *Repositories) ([]string, []string) {

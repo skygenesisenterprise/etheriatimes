@@ -70,8 +70,13 @@ export function AuthForm() {
     if (redirectTo && redirectTo.startsWith('/')) {
       return redirectTo
     }
+    const adminRoles = ['admin', 'superadmin', 'owner']
+    const hasAdminRole = user?.roles?.some((role) => adminRoles.includes(role))
+    if (hasAdminRole) {
+      return '/dash'
+    }
     const locale = pathname.split('/')[1] || 'fr'
-    return `/${locale}/discover`
+    return `/${locale}`
   }
 
   async function handleOAuthLogin(provider: "google" | "github" | "discord" | "apple") {

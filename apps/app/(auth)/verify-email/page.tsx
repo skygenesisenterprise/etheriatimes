@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
-  Mail,
   MailCheck,
   RefreshCw,
 } from 'lucide-react'

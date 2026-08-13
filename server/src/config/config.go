@@ -175,7 +175,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		App: AppConfig{
 			Env:            getEnv("APP_ENV", "development"),
-			Name:           getEnv("APP_NAME", "Kami-Sama"),
+			Name:           getEnv("APP_NAME", "Etheria Times"),
 			Version:        getEnv("APP_VERSION", "dev"),
 			Mode:           getEnv("GIN_MODE", "debug"),
 			AccessLogs:     getEnvBool("API_ACCESS_LOGS", true),
@@ -191,7 +191,7 @@ func Load() (Config, error) {
 			Host:     getEnv("POSTGRESQL__HOST", "localhost"),
 			Port:     getEnv("POSTGRESQL__PORT", "5432"),
 			User:     getEnv("POSTGRESQL__USER", "postgres"),
-			Name:     getEnv("POSTGRESQL__NAME", "aether_meet"),
+			Name:     getEnv("POSTGRESQL__NAME", "postgres"),
 			Password: getEnv("POSTGRESQL__PASSWORD", "postgres"),
 		},
 		Redis: RedisConfig{
@@ -214,10 +214,10 @@ func Load() (Config, error) {
 			LocalEnabled:           getEnvBool("AUTH_LOCAL_ENABLED", true),
 			Mode:                   strings.ToLower(getEnv("AUTH_MODE", "jwt")),
 			JWTSecret:              getEnv("AUTH_JWT_SECRET", getEnv("JWT_SECRET", "")),
-			JWTIssuer:              getEnv("AUTH_JWT_ISSUER", getEnv("JWT_ISSUER", "kami-sama")),
+			JWTIssuer:              getEnv("AUTH_JWT_ISSUER", getEnv("JWT_ISSUER", "etheriatimes")),
 			JWTAccessTTL:           getEnvDuration("AUTH_ACCESS_TOKEN_TTL", getEnvDuration("JWT_ACCESS_TTL", 15*time.Minute)),
 			JWTRefreshTTL:          getEnvDuration("AUTH_REFRESH_TOKEN_TTL", getEnvDuration("JWT_REFRESH_TTL", 30*24*time.Hour)),
-			RefreshCookieName:      getEnv("AUTH_REFRESH_COOKIE_NAME", "kami_sama_account_refresh"),
+			RefreshCookieName:      getEnv("AUTH_REFRESH_COOKIE_NAME", "etheriatimes_account_refresh"),
 			CookieSecure:           getEnvBool("AUTH_COOKIE_SECURE", strings.EqualFold(getEnv("APP_ENV", "development"), "production")),
 			CookieSameSite:         strings.ToLower(getEnv("AUTH_COOKIE_SAME_SITE", "lax")),
 			CookieDomain:           strings.TrimSpace(getEnv("AUTH_COOKIE_DOMAIN", "")),
@@ -229,7 +229,7 @@ func Load() (Config, error) {
 			EmailVerificationTTL:   getEnvDuration("AUTH_EMAIL_VERIFICATION_TTL", 24*time.Hour),
 			PasswordResetTTL:       getEnvDuration("AUTH_PASSWORD_RESET_TTL", time.Hour),
 			RateLimitEnabled:       getEnvBool("AUTH_RATE_LIMIT_ENABLED", true),
-			TOTPIssuer:             getEnv("AUTH_MFA_TOTP_ISSUER", "Kami-Sama"),
+			TOTPIssuer:             getEnv("AUTH_MFA_TOTP_ISSUER", "Etheria Times"),
 			MFARecoveryCodeLength:  getEnvInt("AUTH_MFA_RECOVERY_CODE_LENGTH", 8),
 		},
 		OAuth: OAuthConfig{

@@ -70,4 +70,13 @@ var (
 	ErrContactNotFound      = NewError(http.StatusNotFound, "CONTACT_NOT_FOUND", "The requested contact was not found.", nil)
 	ErrContactGroupNotFound = NewError(http.StatusNotFound, "CONTACT_GROUP_NOT_FOUND", "The requested contact group was not found.", nil)
 	ErrSystemSettingNotFound = NewError(http.StatusNotFound, "SYSTEM_SETTING_NOT_FOUND", "The requested system setting was not found.", nil)
+
+	// Content errors
+	ErrArticleNotFound    = NewError(http.StatusNotFound, "ARTICLE_NOT_FOUND", "The requested article was not found.", nil)
+	ErrCategoryNotFound   = NewError(http.StatusNotFound, "CATEGORY_NOT_FOUND", "The requested category was not found.", nil)
+	ErrTagNotFound        = NewError(http.StatusNotFound, "TAG_NOT_FOUND", "The requested tag was not found.", nil)
+	ErrWebhookNotFound    = NewError(http.StatusNotFound, "WEBHOOK_NOT_FOUND", "The requested webhook was not found.", nil)
+	ErrSeoConfigNotFound  = NewError(http.StatusNotFound, "SEO_CONFIG_NOT_FOUND", "The requested SEO config was not found.", nil)
+	ErrSubscriberNotFound = NewError(http.StatusNotFound, "SUBSCRIBER_NOT_FOUND", "The requested subscriber was not found.", nil)
+	ErrScheduleNotFound   = NewError(http.StatusNotFound, "SCHEDULE_NOT_FOUND", "The requested schedule was not found.", nil)
 )

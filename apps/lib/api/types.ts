@@ -489,3 +489,237 @@ export interface RealtimeEvent<T = unknown> {
   occurredAt: string;
   data: T;
 }
+
+// ─── Content Types ─────────────────────────────────────────────
+
+export type ArticleType = "article" | "annonce" | "note_technique" | "dossier" | "communique" | "analyse";
+export type ArticleStatus = "draft" | "writing" | "review" | "scheduled" | "published" | "archived";
+
+export interface Article {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  type: ArticleType;
+  status: ArticleStatus;
+  categoryId?: string;
+  category?: Category;
+  team: string;
+  authorId: string;
+  author?: User;
+  publishedAt?: string;
+  scheduledAt?: string;
+  tags: string[];
+  seoTitle: string;
+  seoDescription: string;
+  seoOgImage: string;
+  priority: string;
+  channel: string;
+  views: number;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateArticleInput {
+  title: string;
+  excerpt?: string;
+  content?: string;
+  type?: ArticleType;
+  categoryId?: string;
+  team?: string;
+  tags?: string[];
+  seoTitle?: string;
+  seoDescription?: string;
+  seoOgImage?: string;
+  seoKeywords?: string[];
+  priority?: string;
+  channel?: string;
+}
+
+export interface UpdateArticleInput {
+  title?: string;
+  excerpt?: string;
+  content?: string;
+  type?: ArticleType;
+  categoryId?: string;
+  team?: string;
+  tags?: string[];
+  seoTitle?: string;
+  seoDescription?: string;
+  seoOgImage?: string;
+  priority?: string;
+  channel?: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  color: string;
+  sortOrder: number;
+  parentId?: string;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCategoryInput {
+  name: string;
+  description?: string;
+  color?: string;
+  parentId?: string;
+}
+
+export interface UpdateCategoryInput {
+  name?: string;
+  description?: string;
+  color?: string;
+  sortOrder?: number;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaItem {
+  id: string;
+  name: string;
+  fileName: string;
+  originalName?: string;
+  filename?: string;
+  url: string;
+  mimeType: string;
+  size: number;
+  width?: number;
+  height?: number;
+  alt: string;
+  caption: string;
+  uploadedBy: string;
+  workspaceId?: string;
+  metadata?: Record<string, unknown>;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type Media = MediaItem;
+
+export interface CreateMediaInput {
+  name: string;
+  fileName: string;
+  url: string;
+  mimeType: string;
+  size: number;
+  alt?: string;
+  caption?: string;
+}
+
+export interface UpdateMediaInput {
+  name?: string;
+  alt?: string;
+  caption?: string;
+}
+
+export interface Webhook {
+  id: string;
+  workspaceId: string;
+  provider: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  lastTriggeredAt?: string;
+  failureCount: number;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWebhookInput {
+  provider: string;
+  url: string;
+  secret?: string;
+  events: string[];
+}
+
+export interface UpdateWebhookInput {
+  url?: string;
+  secret?: string;
+  events?: string[];
+  active?: boolean;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhookId: string;
+  event: string;
+  status: number;
+  duration: number;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SeoConfig {
+  id: string;
+  pagePath: string;
+  title: string;
+  description: string;
+  ogImage: string;
+  canonical: string;
+  noIndex: boolean;
+  keywords: string;
+  locale: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertSeoConfigInput {
+  pagePath: string;
+  title: string;
+  description?: string;
+  ogImage?: string;
+  canonical?: string;
+  noIndex?: boolean;
+  keywords?: string;
+  locale?: string;
+}
+
+export interface NewsletterSubscriber {
+  id: string;
+  email: string;
+  status: string;
+  workspaceId?: string;
+  subscribedAt: string;
+  unsubscribedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Schedule {
+  id: string;
+  entityType: string;
+  entityId: string;
+  title: string;
+  scheduledAt: string;
+  status: string;
+  publishedAt?: string;
+  cancelledAt?: string;
+  workspaceId?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateScheduleInput {
+  entityType: string;
+  entityId?: string;
+  title: string;
+  scheduledAt: string;
+}

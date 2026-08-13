@@ -134,6 +134,74 @@ type MfaRecoveryCodeRepository interface {
 	DeleteByUserID(ctx context.Context, userID string) error
 }
 
+type ArticleRepository interface {
+	Create(ctx context.Context, article *models.Article) error
+	GetByID(ctx context.Context, id string) (*models.Article, error)
+	GetBySlug(ctx context.Context, slug string) (*models.Article, error)
+	List(ctx context.Context, workspaceID string, status string, categoryID string, offset, limit int) ([]models.Article, int64, error)
+	Update(ctx context.Context, article *models.Article) error
+	Delete(ctx context.Context, id string) error
+}
+
+type CategoryRepository interface {
+	Create(ctx context.Context, category *models.Category) error
+	GetByID(ctx context.Context, id string) (*models.Category, error)
+	GetBySlug(ctx context.Context, slug string) (*models.Category, error)
+	List(ctx context.Context) ([]models.Category, error)
+	Update(ctx context.Context, category *models.Category) error
+	Delete(ctx context.Context, id string) error
+}
+
+type TagRepository interface {
+	Create(ctx context.Context, tag *models.Tag) error
+	GetByID(ctx context.Context, id string) (*models.Tag, error)
+	GetBySlug(ctx context.Context, slug string) (*models.Tag, error)
+	List(ctx context.Context) ([]models.Tag, error)
+	Delete(ctx context.Context, id string) error
+}
+
+type MediaRepository interface {
+	Create(ctx context.Context, media *models.Media) error
+	GetByID(ctx context.Context, id string) (*models.Media, error)
+	List(ctx context.Context, workspaceID string, mimeType string, offset, limit int) ([]models.Media, int64, error)
+	Update(ctx context.Context, media *models.Media) error
+	Delete(ctx context.Context, id string) error
+}
+
+type WebhookRepository interface {
+	Create(ctx context.Context, webhook *models.Webhook) error
+	GetByID(ctx context.Context, id string) (*models.Webhook, error)
+	ListByWorkspace(ctx context.Context, workspaceID string) ([]models.Webhook, error)
+	Update(ctx context.Context, webhook *models.Webhook) error
+	Delete(ctx context.Context, id string) error
+}
+
+type WebhookDeliveryRepository interface {
+	Create(ctx context.Context, delivery *models.WebhookDelivery) error
+	ListByWebhook(ctx context.Context, webhookID string, limit int) ([]models.WebhookDelivery, error)
+}
+
+type SeoConfigRepository interface {
+	GetByPagePath(ctx context.Context, pagePath string) (*models.SeoConfig, error)
+	Upsert(ctx context.Context, config *models.SeoConfig) error
+	List(ctx context.Context) ([]models.SeoConfig, error)
+}
+
+type NewsletterSubscriberRepository interface {
+	Create(ctx context.Context, subscriber *models.NewsletterSubscriber) error
+	GetByEmail(ctx context.Context, email string) (*models.NewsletterSubscriber, error)
+	List(ctx context.Context, status string, offset, limit int) ([]models.NewsletterSubscriber, int64, error)
+	Update(ctx context.Context, subscriber *models.NewsletterSubscriber) error
+}
+
+type ScheduleRepository interface {
+	Create(ctx context.Context, schedule *models.Schedule) error
+	GetByID(ctx context.Context, id string) (*models.Schedule, error)
+	List(ctx context.Context, from, to time.Time, offset, limit int) ([]models.Schedule, int64, error)
+	Update(ctx context.Context, schedule *models.Schedule) error
+	Delete(ctx context.Context, id string) error
+}
+
 type RepositorySet interface {
 	Users() UserRepository
 	UserSettings() UserSettingsRepository
@@ -152,4 +220,13 @@ type RepositorySet interface {
 	UserRoles() UserRoleRepository
 	MfaSecrets() MfaSecretRepository
 	MfaRecoveryCodes() MfaRecoveryCodeRepository
+	Articles() ArticleRepository
+	Categories() CategoryRepository
+	Tags() TagRepository
+	Media() MediaRepository
+	Webhooks() WebhookRepository
+	WebhookDeliveries() WebhookDeliveryRepository
+	SeoConfigs() SeoConfigRepository
+	NewsletterSubscribers() NewsletterSubscriberRepository
+	Schedules() ScheduleRepository
 }

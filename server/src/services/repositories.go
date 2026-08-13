@@ -67,6 +67,33 @@ func (r *Repositories) MfaRecoveryCodes() interfaces.MfaRecoveryCodeRepository {
 func (r *Repositories) MfaSecrets() interfaces.MfaSecretRepository {
 	return &mfaSecretRepository{db: r.db}
 }
+func (r *Repositories) Articles() interfaces.ArticleRepository {
+	return &articleRepository{db: r.db}
+}
+func (r *Repositories) Categories() interfaces.CategoryRepository {
+	return &categoryRepository{db: r.db}
+}
+func (r *Repositories) Tags() interfaces.TagRepository {
+	return &tagRepository{db: r.db}
+}
+func (r *Repositories) Media() interfaces.MediaRepository {
+	return &mediaRepository{db: r.db}
+}
+func (r *Repositories) Webhooks() interfaces.WebhookRepository {
+	return &webhookRepository{db: r.db}
+}
+func (r *Repositories) WebhookDeliveries() interfaces.WebhookDeliveryRepository {
+	return &webhookDeliveryRepository{db: r.db}
+}
+func (r *Repositories) SeoConfigs() interfaces.SeoConfigRepository {
+	return &seoConfigRepository{db: r.db}
+}
+func (r *Repositories) NewsletterSubscribers() interfaces.NewsletterSubscriberRepository {
+	return &newsletterSubscriberRepository{db: r.db}
+}
+func (r *Repositories) Schedules() interfaces.ScheduleRepository {
+	return &scheduleRepository{db: r.db}
+}
 func (r *Repositories) WithDB(db *gorm.DB) *Repositories { return &Repositories{db: db} }
 
 type userRepository struct{ db *gorm.DB }
@@ -457,4 +484,290 @@ func normalizeNotFound(err error, notFound error) error {
 		return notFound
 	}
 	return err
+}
+
+// Article repository
+
+type articleRepository struct{ db *gorm.DB }
+
+func (r *articleRepository) Create(ctx context.Context, article *models.Article) error {
+	return r.db.WithContext(ctx).Create(article).Error
+}
+
+func (r *articleRepository) GetByID(ctx context.Context, id string) (*models.Article, error) {
+	var article models.Article
+	err := r.db.WithContext(ctx).Preload("Category").Preload("Author").First(&article, "id = ?", id).Error
+	return &article, normalizeNotFound(err, utils.NewError(404, "ARTICLE_NOT_FOUND", "The requested article was not found.", nil))
+}
+
+func (r *articleRepository) GetBySlug(ctx context.Context, slug string) (*models.Article, error) {
+	var article models.Article
+	err := r.db.WithContext(ctx).Preload("Category").Preload("Author").First(&article, "slug = ?", slug).Error
+	return &article, normalizeNotFound(err, utils.NewError(404, "ARTICLE_NOT_FOUND", "The requested article was not found.", nil))
+}
+
+func (r *articleRepository) List(ctx context.Context, workspaceID string, status string, categoryID string, offset, limit int) ([]models.Article, int64, error) {
+	var articles []models.Article
+	var count int64
+	query := r.db.WithContext(ctx).Model(&models.Article{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if categoryID != "" {
+		query = query.Where("category_id = ?", categoryID)
+	}
+	query = query.Where("archived_at IS NULL")
+	if err := query.Count(&count).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Preload("Category").Preload("Author").Order("updated_at DESC").Offset(offset).Limit(limit).Find(&articles).Error
+	return articles, count, err
+}
+
+func (r *articleRepository) Update(ctx context.Context, article *models.Article) error {
+	return r.db.WithContext(ctx).Save(article).Error
+}
+
+func (r *articleRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&models.Article{}, "id = ?", id).Error
+}
+
+// Category repository
+
+type categoryRepository struct{ db *gorm.DB }
+
+func (r *categoryRepository) Create(ctx context.Context, category *models.Category) error {
+	return r.db.WithContext(ctx).Create(category).Error
+}
+
+func (r *categoryRepository) GetByID(ctx context.Context, id string) (*models.Category, error) {
+	var category models.Category
+	err := r.db.WithContext(ctx).First(&category, "id = ?", id).Error
+	return &category, normalizeNotFound(err, utils.NewError(404, "CATEGORY_NOT_FOUND", "The requested category was not found.", nil))
+}
+
+func (r *categoryRepository) GetBySlug(ctx context.Context, slug string) (*models.Category, error) {
+	var category models.Category
+	err := r.db.WithContext(ctx).First(&category, "slug = ?", slug).Error
+	return &category, normalizeNotFound(err, utils.NewError(404, "CATEGORY_NOT_FOUND", "The requested category was not found.", nil))
+}
+
+func (r *categoryRepository) List(ctx context.Context) ([]models.Category, error) {
+	var categories []models.Category
+	err := r.db.WithContext(ctx).Where("archived_at IS NULL").Order("sort_order ASC, name ASC").Find(&categories).Error
+	return categories, err
+}
+
+func (r *categoryRepository) Update(ctx context.Context, category *models.Category) error {
+	return r.db.WithContext(ctx).Save(category).Error
+}
+
+func (r *categoryRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&models.Category{}, "id = ?", id).Error
+}
+
+// Tag repository
+
+type tagRepository struct{ db *gorm.DB }
+
+func (r *tagRepository) Create(ctx context.Context, tag *models.Tag) error {
+	return r.db.WithContext(ctx).Create(tag).Error
+}
+
+func (r *tagRepository) GetByID(ctx context.Context, id string) (*models.Tag, error) {
+	var tag models.Tag
+	err := r.db.WithContext(ctx).First(&tag, "id = ?", id).Error
+	return &tag, normalizeNotFound(err, utils.NewError(404, "TAG_NOT_FOUND", "The requested tag was not found.", nil))
+}
+
+func (r *tagRepository) GetBySlug(ctx context.Context, slug string) (*models.Tag, error) {
+	var tag models.Tag
+	err := r.db.WithContext(ctx).First(&tag, "slug = ?", slug).Error
+	return &tag, normalizeNotFound(err, utils.NewError(404, "TAG_NOT_FOUND", "The requested tag was not found.", nil))
+}
+
+func (r *tagRepository) List(ctx context.Context) ([]models.Tag, error) {
+	var tags []models.Tag
+	err := r.db.WithContext(ctx).Order("name ASC").Find(&tags).Error
+	return tags, err
+}
+
+func (r *tagRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&models.Tag{}, "id = ?", id).Error
+}
+
+// Media repository
+
+type mediaRepository struct{ db *gorm.DB }
+
+func (r *mediaRepository) Create(ctx context.Context, media *models.Media) error {
+	return r.db.WithContext(ctx).Create(media).Error
+}
+
+func (r *mediaRepository) GetByID(ctx context.Context, id string) (*models.Media, error) {
+	var media models.Media
+	err := r.db.WithContext(ctx).First(&media, "id = ?", id).Error
+	return &media, normalizeNotFound(err, utils.ErrMediaNotFound)
+}
+
+func (r *mediaRepository) List(ctx context.Context, workspaceID string, mimeType string, offset, limit int) ([]models.Media, int64, error) {
+	var items []models.Media
+	var count int64
+	query := r.db.WithContext(ctx).Model(&models.Media{})
+	if workspaceID != "" {
+		query = query.Where("workspace_id = ?", workspaceID)
+	}
+	if mimeType != "" {
+		query = query.Where("mime_type LIKE ?", mimeType+"%")
+	}
+	query = query.Where("archived_at IS NULL")
+	if err := query.Count(&count).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&items).Error
+	return items, count, err
+}
+
+func (r *mediaRepository) Update(ctx context.Context, media *models.Media) error {
+	return r.db.WithContext(ctx).Save(media).Error
+}
+
+func (r *mediaRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&models.Media{}, "id = ?", id).Error
+}
+
+// Webhook repository
+
+type webhookRepository struct{ db *gorm.DB }
+
+func (r *webhookRepository) Create(ctx context.Context, webhook *models.Webhook) error {
+	return r.db.WithContext(ctx).Create(webhook).Error
+}
+
+func (r *webhookRepository) GetByID(ctx context.Context, id string) (*models.Webhook, error) {
+	var webhook models.Webhook
+	err := r.db.WithContext(ctx).First(&webhook, "id = ?", id).Error
+	return &webhook, normalizeNotFound(err, utils.NewError(404, "WEBHOOK_NOT_FOUND", "The requested webhook was not found.", nil))
+}
+
+func (r *webhookRepository) ListByWorkspace(ctx context.Context, workspaceID string) ([]models.Webhook, error) {
+	var items []models.Webhook
+	err := r.db.WithContext(ctx).Where("workspace_id = ? AND archived_at IS NULL", workspaceID).Order("created_at DESC").Find(&items).Error
+	return items, err
+}
+
+func (r *webhookRepository) Update(ctx context.Context, webhook *models.Webhook) error {
+	return r.db.WithContext(ctx).Save(webhook).Error
+}
+
+func (r *webhookRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&models.Webhook{}, "id = ?", id).Error
+}
+
+// WebhookDelivery repository
+
+type webhookDeliveryRepository struct{ db *gorm.DB }
+
+func (r *webhookDeliveryRepository) Create(ctx context.Context, delivery *models.WebhookDelivery) error {
+	return r.db.WithContext(ctx).Create(delivery).Error
+}
+
+func (r *webhookDeliveryRepository) ListByWebhook(ctx context.Context, webhookID string, limit int) ([]models.WebhookDelivery, error) {
+	var items []models.WebhookDelivery
+	err := r.db.WithContext(ctx).Where("webhook_id = ?", webhookID).Order("created_at DESC").Limit(limit).Find(&items).Error
+	return items, err
+}
+
+// SeoConfig repository
+
+type seoConfigRepository struct{ db *gorm.DB }
+
+func (r *seoConfigRepository) GetByPagePath(ctx context.Context, pagePath string) (*models.SeoConfig, error) {
+	var config models.SeoConfig
+	err := r.db.WithContext(ctx).First(&config, "page_path = ?", pagePath).Error
+	return &config, normalizeNotFound(err, utils.NewError(404, "SEO_CONFIG_NOT_FOUND", "The requested SEO config was not found.", nil))
+}
+
+func (r *seoConfigRepository) Upsert(ctx context.Context, config *models.SeoConfig) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "page_path"}},
+		UpdateAll: true,
+	}).Create(config).Error
+}
+
+func (r *seoConfigRepository) List(ctx context.Context) ([]models.SeoConfig, error) {
+	var items []models.SeoConfig
+	err := r.db.WithContext(ctx).Order("page_path ASC").Find(&items).Error
+	return items, err
+}
+
+// NewsletterSubscriber repository
+
+type newsletterSubscriberRepository struct{ db *gorm.DB }
+
+func (r *newsletterSubscriberRepository) Create(ctx context.Context, subscriber *models.NewsletterSubscriber) error {
+	return r.db.WithContext(ctx).Create(subscriber).Error
+}
+
+func (r *newsletterSubscriberRepository) GetByEmail(ctx context.Context, email string) (*models.NewsletterSubscriber, error) {
+	var subscriber models.NewsletterSubscriber
+	err := r.db.WithContext(ctx).First(&subscriber, "email_normalized = ?", email).Error
+	return &subscriber, normalizeNotFound(err, utils.NewError(404, "SUBSCRIBER_NOT_FOUND", "The requested subscriber was not found.", nil))
+}
+
+func (r *newsletterSubscriberRepository) List(ctx context.Context, status string, offset, limit int) ([]models.NewsletterSubscriber, int64, error) {
+	var items []models.NewsletterSubscriber
+	var count int64
+	query := r.db.WithContext(ctx).Model(&models.NewsletterSubscriber{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if err := query.Count(&count).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("subscribed_at DESC").Offset(offset).Limit(limit).Find(&items).Error
+	return items, count, err
+}
+
+func (r *newsletterSubscriberRepository) Update(ctx context.Context, subscriber *models.NewsletterSubscriber) error {
+	return r.db.WithContext(ctx).Save(subscriber).Error
+}
+
+// Schedule repository
+
+type scheduleRepository struct{ db *gorm.DB }
+
+func (r *scheduleRepository) Create(ctx context.Context, schedule *models.Schedule) error {
+	return r.db.WithContext(ctx).Create(schedule).Error
+}
+
+func (r *scheduleRepository) GetByID(ctx context.Context, id string) (*models.Schedule, error) {
+	var schedule models.Schedule
+	err := r.db.WithContext(ctx).First(&schedule, "id = ?", id).Error
+	return &schedule, normalizeNotFound(err, utils.NewError(404, "SCHEDULE_NOT_FOUND", "The requested schedule was not found.", nil))
+}
+
+func (r *scheduleRepository) List(ctx context.Context, from, to time.Time, offset, limit int) ([]models.Schedule, int64, error) {
+	var items []models.Schedule
+	var count int64
+	query := r.db.WithContext(ctx).Model(&models.Schedule{})
+	if !from.IsZero() {
+		query = query.Where("scheduled_at >= ?", from)
+	}
+	if !to.IsZero() {
+		query = query.Where("scheduled_at <= ?", to)
+	}
+	if err := query.Count(&count).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("scheduled_at ASC").Offset(offset).Limit(limit).Find(&items).Error
+	return items, count, err
+}
+
+func (r *scheduleRepository) Update(ctx context.Context, schedule *models.Schedule) error {
+	return r.db.WithContext(ctx).Save(schedule).Error
+}
+
+func (r *scheduleRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&models.Schedule{}, "id = ?", id).Error
 }

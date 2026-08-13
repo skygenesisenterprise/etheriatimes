@@ -1,6 +1,6 @@
 /**
  * Shared utility for reading/writing cookies that are shared across
- * subdomains (e.g. sso.kami-sama.localhost ↔ studios.kami-sama.localhost).
+ * subdomains (e.g. sso.etheriatimes.localhost ↔ studios.etheriatimes.localhost).
  *
  * The domain is derived from the current hostname:
  *   sso.etheriatimes.localhost → .etheriatimes.localhost

@@ -232,9 +232,9 @@ const footerColumns: FooterColumn[] = [
 const socialLinks = [
   { label: "X", href: "https://x.com/etheriatimes" },
   { label: "LinkedIn", href: "https://linkedin.com/company/etheriatimes" },
-  { label: "GitHub", href: "https://github.com/etheriatimes" },
+  { label: "GitHub", href: "https://github.com/skygenesisenterprise/etheriatimes" },
   { label: "YouTube", href: "https://youtube.com/@etheriatimes" },
-  { label: "Discord", href: "https://discord.gg/etheriatimes" },
+  { label: "Discord", href: "https://discord.gg/skygenesisenterprise" },
   { label: "Slack", href: "https://slack.com/etheriatimes" },
   { label: "Twitch", href: "https://twitch.tv/etheriatimes" },
   { label: "Instagram", href: "https://instagram.com/etheriatimes" },

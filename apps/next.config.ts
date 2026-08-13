@@ -22,8 +22,6 @@ const imageRemotePatterns: NonNullable<NextConfig["images"]>["remotePatterns"] =
   { protocol: "https", hostname: "avatars.githubusercontent.com", pathname: "/**" },
   { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
   // AniList artwork CDN (cover art, banners, backdrops) serves images from
-  // s1–s4.anilist.co and img.anilist.co.
-  { protocol: "https", hostname: "*.anilist.co", pathname: "/**" },
   { protocol: "http", hostname: "127.0.0.1", pathname: "/**" },
   { protocol: "http", hostname: "localhost", pathname: "/**" },
 ];

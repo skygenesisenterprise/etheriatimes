@@ -9,8 +9,8 @@ import type { User } from "./types";
  */
 
 // Storage keys
-const SESSION_STORAGE_KEY = "kami-sama.session";
-const SESSION_PREFERENCES_KEY = "kami-sama.session.prefs";
+const SESSION_STORAGE_KEY = "etheriatimes.session";
+const SESSION_PREFERENCES_KEY = "etheriatimes.session.prefs";
 const SESSION_VERSION = "v2";
 
 // Session state interface
@@ -130,7 +130,7 @@ const storageProviders: StorageProvider[] = [
     getItem: (key: string) => {
       if (typeof window === "undefined") return null;
       try {
-        const store = (window as any).__kamiSamaSessionStore;
+        const store = (window as any).__etheriatimesSessionStore;
         return store?.[key] ?? null;
       } catch {
         return null;
@@ -139,10 +139,10 @@ const storageProviders: StorageProvider[] = [
     setItem: (key: string, value: string) => {
       if (typeof window === "undefined") return;
       try {
-        if (!(window as any).__kamiSamaSessionStore) {
-          (window as any).__kamiSamaSessionStore = {};
+        if (!(window as any).__etheriatimesSessionStore) {
+          (window as any).__etheriatimesSessionStore = {};
         }
-        (window as any).__kamiSamaSessionStore[key] = value;
+        (window as any).__etheriatimesSessionStore[key] = value;
       } catch {
         // Ignore errors
       }
@@ -150,7 +150,7 @@ const storageProviders: StorageProvider[] = [
     removeItem: (key: string) => {
       if (typeof window === "undefined") return;
       try {
-        const store = (window as any).__kamiSamaSessionStore;
+        const store = (window as any).__etheriatimesSessionStore;
         if (store) {
           delete store[key];
         }
@@ -164,7 +164,7 @@ const storageProviders: StorageProvider[] = [
 
 // Broadcast channel for cross-tab synchronization
 let broadcastChannel: BroadcastChannel | null = null;
-const SYNC_CHANNEL = "kami-sama-session-sync";
+const SYNC_CHANNEL = "etheriatimes-session-sync";
 
 // Session state listeners
 const sessionListeners = new Set<SessionListener>();
