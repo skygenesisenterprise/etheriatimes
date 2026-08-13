@@ -1,159 +1,60 @@
+import Link from "next/link";
+import Image from "next/image";
 import { Locale, isValidLocale, defaultLocale } from "@/lib/locale";
 import { Header } from "@/components/media/header";
 import { Footer } from "@/components/media/footer";
-import { ArticleCard } from "@/components/media/article-card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { articlesApi } from "@/lib/api/client";
-import type { HomepageArticlesResponse } from "@/lib/api/types";
-import {
-  ChevronRight,
-  Clock,
-  Palette,
-  Film,
-  Music,
-  BookOpen,
-  Theater,
-  Camera,
-  Utensils,
-} from "lucide-react";
+import { SectionTitle } from "@/components/media/section-title";
 
-interface PageProps {
-  params: Promise<{ locale?: string }>;
-}
-
-const isDev = process.env.NODE_ENV !== "production";
-
-const subCategories = [
-  { name: "Tous", icon: Palette, count: 756 },
-  { name: "Cinéma", icon: Film, count: 198 },
-  { name: "Musique", icon: Music, count: 167 },
-  { name: "Littérature", icon: BookOpen, count: 143 },
-  { name: "Arts scéniques", icon: Theater, count: 112 },
-  { name: "Arts visuels", icon: Camera, count: 136 },
-];
-
-const mockFeaturedArticle = {
-  title: "Festival de Cannes 2026 : la liste des sélectionnée",
-  excerpt:
-    "Le jury présidé par une personnalité prestigieux a révélé les 21 films en compétition officielle.",
-  category: "Cinéma",
-  image: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1200&h=675&fit=crop",
-  date: "Il y a 1 heure",
-  href: "/culture/article/cannes-2026",
-};
-
-const mockCultureArticles = [
+const liveNewsItems = [
   {
+    id: "1",
+    title: "Cannes 2026 : la sélection officielle dévoilée",
+    time: "Il y a 5 min",
+    href: "/article/cannes-2026",
+  },
+  {
+    id: "2",
+    title: "Prix Goncourt : un premier roman récompensé",
+    time: "Il y a 17 min",
+    href: "/article/goncourt-2026",
+  },
+  {
+    id: "3",
     title: "Exposition Monet : record d'affluence au Musée d'Orsay",
-    excerpt: "Plus de 500 000 visiteurs en deux mois pour cette rétrospective exceptionnelle.",
-    category: "Arts visuels",
-    image: "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400&h=250&fit=crop",
-    date: "Il y a 2 heures",
-    href: "/culture/article/monet-orsay",
+    time: "Il y a 31 min",
+    href: "/article/monet-orsay",
   },
   {
-    title: "Nouveaux talents de la chanson française",
-    excerpt: "Découvrez les artistes qui marquent la scène musicale cette année.",
-    category: "Musique",
-    image: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=250&fit=crop",
-    date: "Il y a 4 heures",
-    href: "/culture/article/nouveaux-talents",
-  },
-  {
-    title: "Prix Goncourt 2026 : le lauréat est connu",
-    excerpt: "Un premier roman délicat et touchant récompense un jeune auteur prometteur.",
-    category: "Littérature",
-    image: "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400&h=250&fit=crop",
-    date: "Il y a 5 heures",
-    href: "/culture/article/goncourt-2026",
-  },
-  {
-    title: "Opéra de Paris : nouvelle saison spectaculaire",
-    excerpt: "Des productions ambitieuses et des incontournés au programme.",
-    category: "Arts scéniques",
-    image: "https://images.unsplash.com/photo-1507924538820-ede94a04019d?w=400&h=250&fit=crop",
-    date: "Il y a 6 heures",
-    href: "/culture/article/opera-paris",
-  },
-  {
-    title: "Street art : fresques monumentales à Paris",
-    excerpt: "De nouveaux murs s'illuminent dans les quartiers parisiens.",
-    category: "Arts visuels",
-    image: "https://images.unsplash.com/photo-1499781350541-7783f6c6a0c8?w=400&h=250&fit=crop",
-    date: "Hier",
-    href: "/culture/article/street-art-paris",
-  },
-  {
-    title: "Netflix announces French original series",
-    excerpt: "Une série hexagonale fait sensation sur la plateforme de streaming.",
-    category: "Cinéma",
-    image: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&h=250&fit=crop",
-    date: "Hier",
-    href: "/culture/article/netflix-french",
-  },
-  {
-    title: "Festival de jazz de Montreux : édition record",
-    excerpt: "Plus de 250 000 festivaliers attendus pour cette édition anniversaire.",
-    category: "Musique",
-    image: "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=400&h=250&fit=crop",
-    date: "Hier",
-    href: "/culture/article/montreux-jazz",
-  },
-  {
-    title: "Architecture : la pyramide du Louvre fête ses 40 ans",
-    excerpt: "L'œuvre de Pei demeure emblématique du renouveau muséal.",
-    category: "Arts visuels",
-    image: "https://images.unsplash.com/photo-1499426600726-ac57c67be1dc?w=400&h=250&fit=crop",
-    date: "Il y a 2 jours",
-    href: "/culture/article/pyramid-louvre",
+    id: "4",
+    title: "Opéra de Paris : la nouvelle saison dévoilée",
+    time: "Il y a 44 min",
+    href: "/article/opera-paris",
   },
 ];
 
-const mockTrendingArticles = [
-  {
-    title: "Oscars 2026 : nominations annoncées",
-    date: "Il y a 1 heure",
-    href: "/culture/article/oscars-2026",
-  },
-  {
-    title: "Victoires de la Musique : le palmarès",
-    date: "Hier",
-    href: "/culture/article/victoires-musique",
-  },
-  {
-    title: "Bestsellers : les livres les plus vendus",
-    date: "Il y a 3 heures",
-    href: "/culture/article/bestsellers",
-  },
-  {
-    title: "Émissions culturelles à ne pas manquer",
-    date: "Hier",
-    href: "/culture/article/emissions",
-  },
-  {
-    title: "Agendas concerts et festivals",
-    date: "Il y a 2 jours",
-    href: "/culture/article/agenda",
-  },
-];
-
-async function getCultureArticles(locale: string) {
-  if (isDev) {
-    return null;
-  }
-  try {
-    const response = (await articlesApi.getHomepage(locale)) as HomepageArticlesResponse;
-    if (response.success && response.data) {
-      return response.data;
-    }
-  } catch (error) {
-    console.error("Failed to fetch culture articles:", error);
-  }
-  return null;
+interface HomeArticle {
+  title: string;
+  excerpt?: string;
+  category?: string;
+  image?: string;
+  date: string;
+  href: string;
+  author?: string;
 }
 
-function articleToCardProps(article: {
+interface HomeHeadline {
+  title: string;
+  date: string;
+  href: string;
+}
+
+interface OpinionArticle {
+  author: string;
+  title: string;
+  href: string;
+}
+
+interface HomepageArticlePayload {
   id: string;
   title: string;
   slug: string;
@@ -162,7 +63,22 @@ function articleToCardProps(article: {
   viewCount?: number;
   readTime?: number;
   imageUrl?: string;
-}) {
+}
+
+interface HomepageData {
+  featured?: HomepageArticlePayload;
+  topArticles?: HomepageArticlePayload[];
+  mostRead?: Array<{ title: string; slug: string }>;
+  sections?: Record<string, HomepageArticlePayload[]>;
+}
+
+async function getCultureArticles(_locale: string): Promise<HomepageData | null> {
+  // The public article endpoint is not part of the current API client. Keep
+  // the editorial fallback data until that endpoint is exposed again.
+  return null;
+}
+
+function articleToCardProps(article: HomepageArticlePayload): HomeArticle {
   return {
     title: article.title,
     excerpt: article.excerpt,
@@ -173,7 +89,7 @@ function articleToCardProps(article: {
       article.imageUrl ||
       "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400&h=250&fit=crop",
     date: "Il y a 1 heure",
-    href: `/culture/article/${article.slug}`,
+    href: `/article/${article.slug}`,
   };
 }
 
@@ -194,188 +110,741 @@ function mergeWithMock<T extends { title: string }>(
   return [...realArticles.slice(0, realCount), ...mockArticles.slice(0, mockNeeded)];
 }
 
-export default async function CulturePage({ params }: PageProps) {
+const mockFeaturedArticle: HomeArticle = {
+  title: "Festival de Cannes 2026 : la sélection officielle dévoilée",
+  excerpt:
+    "Le jury, présidé par une personnalité prestigieuse, a révélé les 21 films en compétition. Décryptage d'une édition très attendue.",
+  category: "Cinéma",
+  image: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1200&h=675&fit=crop",
+  date: "Il y a 1 heure",
+  href: "/article/cannes-2026",
+};
+
+const mockTopArticles: HomeArticle[] = [
+  {
+    title: "Exposition Monet : record d'affluence",
+    category: "Arts visuels",
+    image: "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400&h=250&fit=crop",
+    date: "Il y a 2 heures",
+    href: "/article/monet-orsay",
+  },
+  {
+    title: "Prix Goncourt 2026 : le lauréat est connu",
+    category: "Littérature",
+    image: "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400&h=250&fit=crop",
+    date: "Il y a 5 heures",
+    href: "/article/goncourt-2026",
+  },
+  {
+    title: "Nouveaux talents de la chanson française",
+    category: "Musique",
+    image: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=250&fit=crop",
+    date: "Il y a 4 heures",
+    href: "/article/nouveaux-talents",
+  },
+];
+
+const mockMostReadArticles: HomeHeadline[] = [
+  { title: "Oscars 2026 : les nominations annoncées", date: "Il y a 1 heure", href: "/article/oscars-2026" },
+  { title: "Victoires de la Musique : le palmarès", date: "Hier", href: "/article/victoires-musique" },
+  { title: "Les livres les plus vendus cette semaine", date: "Il y a 3 heures", href: "/article/bestsellers" },
+  { title: "Le nouveau film primé au festival", date: "Il y a 2 heures", href: "/article/cinema-festival" },
+  { title: "Littérature : le lauréat dévoile son roman", date: "Hier", href: "/article/litterature-prix" },
+];
+
+const mockOpinionArticles: OpinionArticle[] = [
+  { author: "Anaïs Weber", title: "Éditorial : le cinéma français a la cote", href: "/article/editorial-cinema" },
+  { author: "Romain Petit", title: "Tribune : défendre la lecture publique", href: "/article/tribune-lecture" },
+  { author: "Clara Nguyen", title: "Chronique : la scène musicale se renouvelle", href: "/article/chronique-musique" },
+];
+
+const mockCinemaArticles: HomeArticle[] = [
+  {
+    title: "Festival de Cannes 2026 : la sélection officielle dévoilée",
+    excerpt: "Le jury, présidé par une personnalité prestigieuse, a révélé les 21 films en compétition.",
+    category: "Cinéma",
+    image: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400&h=250&fit=crop",
+    date: "Il y a 1 heure",
+    href: "/article/cannes-2026",
+  },
+  {
+    title: "Une série française fait sensation sur les plateformes",
+    category: "Cinéma",
+    image: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/netflix-french",
+  },
+  {
+    title: "Le nouveau film primé au festival",
+    category: "Cinéma",
+    image: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400&h=250&fit=crop",
+    date: "Il y a 2 heures",
+    href: "/article/cinema-festival",
+  },
+  {
+    title: "Oscars 2026 : les nominations annoncées",
+    category: "Cinéma",
+    date: "Il y a 1 heure",
+    href: "/article/oscars-2026",
+  },
+  {
+    title: "Box-office : le film français de l'année",
+    category: "Cinéma",
+    date: "Il y a 2 jours",
+    href: "/article/box-office",
+  },
+];
+
+const mockMusiqueArticles: HomeArticle[] = [
+  {
+    title: "Nouveaux talents de la chanson française",
+    excerpt: "Découvrez les artistes qui marquent la scène musicale cette année.",
+    category: "Musique",
+    image: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=250&fit=crop",
+    date: "Il y a 4 heures",
+    href: "/article/nouveaux-talents",
+  },
+  {
+    title: "Festival de jazz de Montreux : édition record",
+    category: "Musique",
+    image: "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/montreux-jazz",
+  },
+  {
+    title: "Victoires de la Musique : le palmarès",
+    category: "Musique",
+    image: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/victoires-musique",
+  },
+  {
+    title: "La saison des festivals s'achève en apothéose",
+    category: "Musique",
+    date: "Hier",
+    href: "/article/festivals-apotheose",
+  },
+  {
+    title: "Streaming : les albums qui dominent les charts",
+    category: "Musique",
+    date: "Il y a 2 jours",
+    href: "/article/albums-charts",
+  },
+];
+
+const mockLitteratureArticles: HomeArticle[] = [
+  {
+    title: "Prix Goncourt 2026 : le lauréat est connu",
+    excerpt: "Un premier roman délicat et touchant récompense un jeune auteur prometteur.",
+    category: "Littérature",
+    image: "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400&h=250&fit=crop",
+    date: "Il y a 5 heures",
+    href: "/article/goncourt-2026",
+  },
+  {
+    title: "Les livres les plus vendus cette semaine",
+    category: "Littérature",
+    image: "https://images.unsplash.com/photo-1519682337058-a94d519337bc?w=400&h=250&fit=crop",
+    date: "Il y a 3 heures",
+    href: "/article/bestsellers",
+  },
+  {
+    title: "Le lauréat dévoile son roman",
+    category: "Littérature",
+    image: "https://images.unsplash.com/photo-1474932430478-367dbb6832c1?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/litterature-prix",
+  },
+  {
+    title: "Rentrée littéraire : les romans à ne pas manquer",
+    category: "Littérature",
+    date: "Hier",
+    href: "/article/rentree-litteraire",
+  },
+  {
+    title: "Bande dessinée : le 9e art en pleine forme",
+    category: "Littérature",
+    date: "Il y a 2 jours",
+    href: "/article/bande-dessinee",
+  },
+];
+
+const mockArtsSceniquesArticles: HomeArticle[] = [
+  {
+    title: "Opéra de Paris : nouvelle saison spectaculaire",
+    excerpt: "Des productions ambitieuses et des incontournables au programme.",
+    category: "Arts scéniques",
+    image: "https://images.unsplash.com/photo-1507924538820-ede94a04019d?w=400&h=250&fit=crop",
+    date: "Il y a 6 heures",
+    href: "/article/opera-paris",
+  },
+  {
+    title: "Théâtre : les pièces qui font courir Paris",
+    category: "Arts scéniques",
+    image: "https://images.unsplash.com/photo-1503095396549-807759245b35?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/theatre-paris",
+  },
+  {
+    title: "Danse : une saison chorégraphique audacieuse",
+    category: "Arts scéniques",
+    image: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/danse-saison",
+  },
+  {
+    title: "Festival d'Avignon : une édition engagée",
+    category: "Arts scéniques",
+    date: "Il y a 2 jours",
+    href: "/article/avignon-festival",
+  },
+  {
+    title: "Comédie musicale : le retour d'un classique",
+    category: "Arts scéniques",
+    date: "Il y a 2 jours",
+    href: "/article/comedie-musicale",
+  },
+];
+
+const mockArtsVisuelsArticles: HomeArticle[] = [
+  {
+    title: "Exposition Monet : record d'affluence au Musée d'Orsay",
+    excerpt: "Plus de 500 000 visiteurs en deux mois pour cette rétrospective exceptionnelle.",
+    category: "Arts visuels",
+    image: "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400&h=250&fit=crop",
+    date: "Il y a 2 heures",
+    href: "/article/monet-orsay",
+  },
+  {
+    title: "Street art : fresques monumentales à Paris",
+    category: "Arts visuels",
+    image: "https://images.unsplash.com/photo-1499781350541-7783f6c6a0c8?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/street-art-paris",
+  },
+  {
+    title: "Architecture : la pyramide du Louvre fête ses 40 ans",
+    category: "Arts visuels",
+    image: "https://images.unsplash.com/photo-1499426600726-ac57c67be1dc?w=400&h=250&fit=crop",
+    date: "Il y a 2 jours",
+    href: "/article/pyramid-louvre",
+  },
+  {
+    title: "Chefs-d'œuvre de la Renaissance à l'honneur",
+    category: "Arts visuels",
+    date: "Hier",
+    href: "/article/exposition-renaissance",
+  },
+  {
+    title: "Photographie : les grands prix de l'année",
+    category: "Arts visuels",
+    date: "Il y a 2 jours",
+    href: "/article/photo-prix",
+  },
+];
+
+const mockSeriesArticles: HomeArticle[] = [
+  {
+    title: "Séries : une production française sensation",
+    excerpt: "Une série hexagonale fait sensation sur les plateformes de streaming.",
+    category: "Séries",
+    image: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/netflix-french",
+  },
+  {
+    title: "Adaptations littéraires : le grand retour",
+    category: "Séries",
+    image: "https://images.unsplash.com/photo-1594908900066-3f47337549d8?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/adaptations-series",
+  },
+  {
+    title: "Documentaires : la sélection du mois",
+    category: "Séries",
+    date: "Il y a 2 jours",
+    href: "/article/documentaires-mois",
+  },
+  {
+    title: "Plateformes : la bataille des abonnés",
+    category: "Séries",
+    date: "Il y a 2 jours",
+    href: "/article/platformes-bataille",
+  },
+];
+
+const mockPatrimoineArticles: HomeArticle[] = [
+  {
+    title: "Patrimoine : les nouveaux sites classés",
+    excerpt: "L'Unesco inscrit plusieurs monuments français au patrimoine mondial.",
+    category: "Patrimoine",
+    image: "https://images.unsplash.com/photo-1499426600726-ac57c67be1dc?w=400&h=250&fit=crop",
+    date: "Il y a 2 jours",
+    href: "/article/unesco-patrimoine",
+  },
+  {
+    title: "Châteaux : une fréquentation en hausse",
+    category: "Patrimoine",
+    image: "https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/chateaux-frequentation",
+  },
+  {
+    title: "Restauration : les chantiers de l'année",
+    category: "Patrimoine",
+    date: "Hier",
+    href: "/article/restauration-chantiers",
+  },
+  {
+    title: "Musées : le succès des expositions immersives",
+    category: "Patrimoine",
+    date: "Il y a 2 jours",
+    href: "/article/musees-immersifs",
+  },
+];
+
+const mockGastronomieArticles: HomeArticle[] = [
+  {
+    title: "Gastronomie : les chefs qui renouvellent la table",
+    excerpt: "Une nouvelle génération de cuisiniers bouscule les codes de la haute gastronomie.",
+    category: "Gastronomie",
+    image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/chefs-nouvelle-generation",
+  },
+  {
+    title: "Bistrots : le renouveau des tables de quartier",
+    category: "Gastronomie",
+    image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=400&h=250&fit=crop",
+    date: "Hier",
+    href: "/article/bistrots-renouveau",
+  },
+  {
+    title: "Vins : les domaines qui montent",
+    category: "Gastronomie",
+    date: "Il y a 2 jours",
+    href: "/article/vins-domaines",
+  },
+  {
+    title: "Marchés : les circuits courts à l'honneur",
+    category: "Gastronomie",
+    date: "Il y a 2 jours",
+    href: "/article/marches-circuits-courts",
+  },
+];
+
+function localizedHref(locale: Locale, href: string) {
+  if (href.startsWith("http") || href.startsWith("#")) {
+    return href;
+  }
+
+  if (href === "/") {
+    return `/${locale}`;
+  }
+
+  return href.startsWith(`/${locale}/`) ? href : `/${locale}${href}`;
+}
+
+interface LocalizedArticleProps {
+  article: HomeArticle;
+  locale: Locale;
+}
+
+function LeadArticle({ article, locale, large = false }: LocalizedArticleProps & { large?: boolean }) {
+  const href = localizedHref(locale, article.href);
+
+  return (
+    <article>
+      {article.image && (
+        <Link href={href} className="group block mb-4">
+          <div className={`relative overflow-hidden bg-muted ${large ? "aspect-video" : "aspect-16/10"}`}>
+            <Image
+              src={article.image}
+              alt={article.title}
+              fill
+              sizes={large ? "(min-width: 1024px) 66vw, 100vw" : "(min-width: 768px) 33vw, 100vw"}
+              className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            />
+          </div>
+        </Link>
+      )}
+      {article.category && (
+        <span className="text-[11px] font-bold uppercase tracking-wider text-primary block">
+          {article.category}
+        </span>
+      )}
+      <h2
+        className={`font-serif font-bold leading-tight text-foreground mt-2 ${
+          large ? "text-3xl md:text-[40px]" : "text-xl md:text-2xl"
+        }`}
+      >
+        <Link href={href} className="hover:text-primary transition-colors">
+          {article.title}
+        </Link>
+      </h2>
+      {article.excerpt && (
+        <p className={`text-muted-foreground mt-3 line-clamp-3 ${large ? "text-base" : "text-sm"}`}>
+          {article.excerpt}
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground mt-3">{article.date}</p>
+    </article>
+  );
+}
+
+function StoryCard({ article, locale }: LocalizedArticleProps) {
+  const href = localizedHref(locale, article.href);
+
+  return (
+    <article className="group border-t border-border pt-3">
+      {article.image && (
+        <Link href={href} className="block overflow-hidden bg-muted mb-3">
+          <div className="relative aspect-16/10">
+            <Image
+              src={article.image}
+              alt={article.title}
+              fill
+              sizes="(min-width: 768px) 25vw, 100vw"
+              className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            />
+          </div>
+        </Link>
+      )}
+      {article.category && (
+        <span className="text-[11px] font-bold uppercase tracking-wider text-primary block">
+          {article.category}
+        </span>
+      )}
+      <h3 className="font-serif text-lg font-bold leading-snug text-foreground mt-1">
+        <Link href={href} className="hover:text-primary transition-colors">
+          {article.title}
+        </Link>
+      </h3>
+      <p className="text-xs text-muted-foreground mt-2">{article.date}</p>
+    </article>
+  );
+}
+
+function HeadlineItem({ article, locale }: LocalizedArticleProps) {
+  return (
+    <article className="py-3 border-b border-border last:border-b-0">
+      {article.category && (
+        <span className="text-[11px] font-bold uppercase tracking-wider text-primary block">
+          {article.category}
+        </span>
+      )}
+      <h3 className="font-serif text-base font-bold leading-snug text-foreground mt-1">
+        <Link href={localizedHref(locale, article.href)} className="hover:text-primary transition-colors">
+          {article.title}
+        </Link>
+      </h3>
+      <p className="text-xs text-muted-foreground mt-1">{article.date}</p>
+    </article>
+  );
+}
+
+function SectionBlock({
+  title,
+  href,
+  articles,
+  locale,
+}: {
+  title: string;
+  href: string;
+  articles: HomeArticle[];
+  locale: Locale;
+}) {
+  if (articles.length === 0) {
+    return null;
+  }
+
+  const [lead, ...rest] = articles;
+  const visualStories = rest.slice(0, 2);
+  const headlines = rest.slice(2, 5);
+
+  return (
+    <section>
+      <SectionTitle title={title} href={localizedHref(locale, href)} />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-12 md:gap-8">
+        <div className="md:col-span-7 md:border-r md:border-border md:pr-8">
+          <LeadArticle article={lead} locale={locale} />
+        </div>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:col-span-5">
+          {visualStories.map((article, index) => (
+            <div key={index} className={index > 0 ? "sm:border-l sm:border-border sm:pl-6" : ""}>
+              <StoryCard article={article} locale={locale} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {headlines.length > 0 && (
+        <div className="mt-6 grid grid-cols-1 border-t border-border sm:grid-cols-3 sm:divide-x sm:divide-border">
+          {headlines.map((article, index) => (
+            <div key={index} className="sm:px-6 first:pl-0 last:pr-0">
+              <HeadlineItem article={article} locale={locale} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default async function CulturePage({ params }: { params: Promise<{ locale?: string }> }) {
   const { locale: paramLocale } = await params;
   const locale: Locale = paramLocale && isValidLocale(paramLocale) ? paramLocale : defaultLocale;
 
   const homepageData = await getCultureArticles(locale);
 
-  const cultureArticles = mergeWithMock(
-    homepageData?.sections?.culture?.map(articleToCardProps),
-    mockCultureArticles
-  );
-
   const featured = homepageData?.featured
     ? articleToCardProps(homepageData.featured)
     : mockFeaturedArticle;
+  const top = mergeWithMock(homepageData?.topArticles?.map(articleToCardProps), mockTopArticles, 3);
+  const mostRead: HomeHeadline[] = mergeWithMock(
+    homepageData?.mostRead?.map((a: { title: string; slug: string }) => ({
+      title: a.title,
+      date: "Il y a 1 heure",
+      href: `/article/${a.slug}`,
+    })),
+    mockMostReadArticles,
+    5
+  );
+
+  const cinemaArticles = mergeWithMock(
+    homepageData?.sections?.cinema?.map(articleToCardProps),
+    mockCinemaArticles
+  );
+  const musiqueArticles = mergeWithMock(
+    homepageData?.sections?.musique?.map(articleToCardProps),
+    mockMusiqueArticles
+  );
+  const litteratureArticles = mergeWithMock(
+    homepageData?.sections?.litterature?.map(articleToCardProps),
+    mockLitteratureArticles
+  );
+  const artsSceniquesArticles = mergeWithMock(
+    homepageData?.sections?.["arts-sceniques"]?.map(articleToCardProps),
+    mockArtsSceniquesArticles
+  );
+  const artsVisuelsArticles = mergeWithMock(
+    homepageData?.sections?.["arts-visuels"]?.map(articleToCardProps),
+    mockArtsVisuelsArticles
+  );
+  const seriesArticles = mergeWithMock(
+    homepageData?.sections?.series?.map(articleToCardProps),
+    mockSeriesArticles
+  );
+  const patrimoineArticles = mergeWithMock(
+    homepageData?.sections?.patrimoine?.map(articleToCardProps),
+    mockPatrimoineArticles
+  );
+  const gastronomieArticles = mergeWithMock(
+    homepageData?.sections?.gastronomie?.map(articleToCardProps),
+    mockGastronomieArticles
+  );
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background select-none">
       <Header />
       <main className="flex-1">
-        <section className="py-12">
-          <div className="mx-auto max-w-7xl px-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-              <a href={`/${locale}`} className="hover:text-foreground">
-                Accueil
-              </a>
-              <ChevronRight className="h-4 w-4" />
-              <span className="text-foreground">Culture</span>
-            </div>
-            <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground mb-4">
-              Culture
-            </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl">
-              Arts, spectacles, littérature, cinéma et toutes les actualités culturelles.
-            </p>
-          </div>
-        </section>
-
-        <section className="py-8">
-          <div className="mx-auto max-w-7xl px-4">
-            <div className="flex flex-wrap gap-2 mb-8">
-              {subCategories.map((cat) => {
-                const IconComponent = cat.icon;
-                return (
-                  <Button key={cat.name} variant="outline" size="sm" className="gap-2">
-                    <IconComponent className="h-4 w-4" />
-                    {cat.name}
-                    <Badge variant="secondary" className="ml-1">
-                      {cat.count}
-                    </Badge>
-                  </Button>
-                );
-              })}
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-7xl px-4 py-8 lg:px-6 lg:py-10">
+            <div className="mb-6 flex items-center justify-between gap-4 border-b border-border pb-3">
+              <h2 className="font-serif text-2xl font-bold tracking-tight text-foreground">
+                L&apos;actualité culturelle du jour
+              </h2>
+              <Link
+                href={localizedHref(locale, "/archives")}
+                className="hidden text-[11px] font-bold uppercase tracking-wide text-muted-foreground hover:text-primary sm:block"
+              >
+                Toute l&apos;actualité
+              </Link>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 space-y-8">
-                <div>
-                  <ArticleCard {...featured} variant="featured" categoryColor="bg-purple-600" />
-                </div>
-
-                <div>
-                  <h2 className="font-serif text-2xl font-bold text-foreground mb-6">
-                    Articles récents
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {cultureArticles.slice(0, 4).map((article, index) => (
-                      <ArticleCard key={index} {...article} variant="vertical" />
-                    ))}
+            <div className="grid grid-cols-1 gap-y-8 lg:grid-cols-12 lg:gap-x-10">
+              <div className="lg:col-span-8 lg:border-r lg:border-border lg:pr-10">
+                <div className="grid grid-cols-1 gap-7 md:grid-cols-5 md:gap-8">
+                  <div className="border-b border-border pb-7 md:col-span-3 md:border-b-0 md:border-r md:pb-0 md:pr-8">
+                    <LeadArticle article={featured} locale={locale} large />
                   </div>
-                </div>
-
-                <div>
-                  <h2 className="font-serif text-2xl font-bold text-foreground mb-6">
-                    Plus d&apos;articles
-                  </h2>
-                  <div className="space-y-4">
-                    {cultureArticles.slice(4).map((article, index) => (
-                      <ArticleCard key={index} {...article} variant="horizontal" />
-                    ))}
+                  <div className="md:col-span-2">
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-1">
+                      {top.slice(0, 2).map((article, index) => (
+                        <div
+                          key={index}
+                          className={index > 0 ? "sm:border-l sm:border-border sm:pl-6 md:border-l-0 md:border-t md:pl-0 md:pt-6" : ""}
+                        >
+                          <StoryCard article={article} locale={locale} />
+                        </div>
+                      ))}
+                    </div>
+                    {top[2] && (
+                      <div className="mt-6 border-t border-border">
+                        <HeadlineItem article={top[2]} locale={locale} />
+                      </div>
+                    )}
                   </div>
-                </div>
-
-                <div className="flex justify-center">
-                  <Button variant="outline" size="lg">
-                    Charger plus d&apos;articles
-                  </Button>
                 </div>
               </div>
 
-              <aside className="space-y-8">
-                <div className="bg-card border border-border rounded-lg p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Film className="h-5 w-5 text-purple-600" />
-                    <h3 className="font-semibold text-foreground">Au cinéma</h3>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                      <Film className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">Nouveautés</span>
-                    </div>
-                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                      <Camera className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">Festivals</span>
-                    </div>
-                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                      <BookOpen className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">Adaptations</span>
-                    </div>
-                  </div>
-                </div>
+              <aside className="lg:col-span-4">
+                <SectionTitle title="À suivre" />
+                <ol>
+                  {mostRead.map((article, index) => (
+                    <li key={index} className="flex gap-4 border-b border-border py-4 last:border-b-0">
+                      <span className="font-serif text-3xl font-bold leading-none text-primary/45">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <div className="min-w-0">
+                        <Link
+                          href={localizedHref(locale, article.href)}
+                          className="font-serif text-base font-bold leading-snug text-foreground hover:text-primary transition-colors"
+                        >
+                          {article.title}
+                        </Link>
+                        <p className="mt-1 text-xs text-muted-foreground">{article.date}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
 
-                <div className="bg-card border border-border rounded-lg p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Clock className="h-5 w-5 text-primary" />
-                    <h3 className="font-semibold text-foreground">Tendances</h3>
-                  </div>
-                  <div className="space-y-4">
-                    {mockTrendingArticles.map((article, index) => (
-                      <a key={index} href={article.href} className="flex items-start gap-3 group">
-                        <span className="font-serif text-2xl font-bold text-primary/30">
-                          {index + 1}
+                <div className="mt-8 border-t-2 border-foreground pt-3">
+                  <h2 className="font-serif text-xl font-bold">En direct</h2>
+                  <div className="mt-2">
+                    {liveNewsItems.slice(0, 3).map((item) => (
+                      <Link
+                        key={item.id}
+                        href={localizedHref(locale, item.href)}
+                        className="group flex gap-3 border-b border-border py-3 last:border-b-0"
+                      >
+                        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                        <span className="text-sm leading-snug text-foreground group-hover:text-primary transition-colors">
+                          {item.title}
                         </span>
-                        <div>
-                          <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                            {article.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                            <Clock className="h-3 w-3" />
-                            {article.date}
-                          </p>
-                        </div>
-                      </a>
+                      </Link>
                     ))}
                   </div>
-                </div>
-
-                <div className="bg-card border border-border rounded-lg p-6">
-                  <h3 className="font-semibold text-foreground mb-4">Disciplines</h3>
-                  <div className="space-y-2">
-                    {subCategories.slice(1).map((cat) => {
-                      const IconComponent = cat.icon;
-                      return (
-                        <a
-                          key={cat.name}
-                          href="#"
-                          className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors"
-                        >
-                          <div className="flex items-center gap-2">
-                            <IconComponent className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm text-foreground">{cat.name}</span>
-                          </div>
-                          <span className="text-xs text-muted-foreground">{cat.count}</span>
-                        </a>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="bg-primary text-primary-foreground p-6 rounded-lg">
-                  <h3 className="font-serif text-lg font-bold mb-2">Newsletter Culture</h3>
-                  <p className="text-sm text-primary-foreground/80 mb-4">
-                    Recevez les actualités culturelles directement dans votre boîte mail.
-                  </p>
-                  <form className="space-y-3">
-                    <input
-                      type="email"
-                      placeholder="Votre email"
-                      className="w-full px-3 py-2 text-sm bg-primary-foreground text-foreground rounded-sm placeholder:text-muted-foreground"
-                    />
-                    <button
-                      type="submit"
-                      className="w-full px-3 py-2 text-sm font-medium bg-primary-foreground text-primary rounded-sm hover:bg-primary-foreground/90 transition-colors"
-                    >
-                      S&apos;inscrire
-                    </button>
-                  </form>
                 </div>
               </aside>
             </div>
           </div>
         </section>
+
+        <section className="mx-auto max-w-7xl px-4 py-10 lg:px-6 lg:py-12">
+          <div className="grid grid-cols-1 gap-y-12 lg:grid-cols-12 lg:gap-x-10">
+            <div className="space-y-12 lg:col-span-8">
+              <SectionBlock title="Cinéma" href="/culture" articles={cinemaArticles} locale={locale} />
+              <SectionBlock title="Musique" href="/culture" articles={musiqueArticles} locale={locale} />
+              <SectionBlock title="Littérature" href="/culture" articles={litteratureArticles} locale={locale} />
+              <SectionBlock title="Arts scéniques" href="/culture" articles={artsSceniquesArticles} locale={locale} />
+              <SectionBlock title="Arts visuels" href="/culture" articles={artsVisuelsArticles} locale={locale} />
+            </div>
+
+            <aside className="lg:col-span-4 lg:border-l lg:border-border lg:pl-10">
+              <SectionTitle title="Idées et tribunes" href={localizedHref(locale, "/opinions")} />
+              <div>
+                {mockOpinionArticles.map((article) => (
+                  <article key={article.href} className="border-b border-border py-4 first:pt-0 last:border-b-0">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {article.author}
+                    </p>
+                    <h3 className="mt-1 font-serif text-lg font-bold leading-snug">
+                      <Link
+                        href={localizedHref(locale, article.href)}
+                        className="hover:text-primary transition-colors"
+                      >
+                        {article.title}
+                      </Link>
+                    </h3>
+                  </article>
+                ))}
+              </div>
+
+              <div className="mt-10 bg-muted p-6">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Newsletter</p>
+                <h2 className="mt-2 font-serif text-2xl font-bold leading-tight">
+                  La culture, décryptée chaque matin.
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  Une sélection claire et utile de la rédaction sur les arts et les spectacles, chaque matin.
+                </p>
+                <Link
+                  href={localizedHref(locale, "/newsletter")}
+                  className="mt-5 inline-flex bg-foreground px-4 py-2 text-xs font-bold uppercase tracking-wide text-background hover:bg-primary transition-colors"
+                >
+                  Découvrir les newsletters
+                </Link>
+              </div>
+
+              <div className="mt-10">
+                <SectionTitle title="À explorer" />
+                <div className="grid grid-cols-2 gap-x-5 gap-y-3 text-sm font-semibold">
+                  {[
+                    ["Archives", "/archives"],
+                    ["Dossiers", "/dossiers"],
+                    ["Podcasts", "/podcasts"],
+                    ["Vidéos", "/videos"],
+                    ["Agenda", "/agenda"],
+                    ["Services", "/services"],
+                  ].map(([label, href]) => (
+                    <Link
+                      key={href}
+                      href={localizedHref(locale, href)}
+                      className="border-b border-border pb-2 hover:text-primary transition-colors"
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section className="border-y border-border bg-muted/40">
+          <div className="mx-auto max-w-7xl px-4 py-10 lg:px-6 lg:py-12">
+            <div className="mb-8 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-primary">La rédaction</p>
+                <h2 className="mt-1 font-serif text-3xl font-bold">La culture en continu</h2>
+              </div>
+              <span className="hidden text-sm text-muted-foreground md:block">Toutes les rubriques</span>
+            </div>
+            <div className="grid grid-cols-1 gap-12 md:grid-cols-2">
+              <SectionBlock title="Séries" href="/culture" articles={seriesArticles} locale={locale} />
+              <SectionBlock title="Patrimoine" href="/culture" articles={patrimoineArticles} locale={locale} />
+              <SectionBlock title="Gastronomie" href="/culture" articles={gastronomieArticles} locale={locale} />
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-foreground text-background">
+          <div className="mx-auto max-w-3xl px-4 py-14 text-center">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-foreground/70">La newsletter du matin</p>
+            <h2 className="mt-3 font-serif text-3xl font-bold md:text-4xl">
+              La culture, chaque matin
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-background/70 md:text-base">
+              Recevez la sélection de la rédaction : critiques, décryptages et analyses de la scène culturelle, disponible dès 7 h.
+            </p>
+            <form className="mx-auto mt-6 flex max-w-md flex-col gap-3 sm:flex-row">
+              <input
+                type="email"
+                required
+                placeholder="Votre adresse email"
+                className="min-w-0 flex-1 bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none"
+              />
+              <button
+                type="submit"
+                className="bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+              >
+                S&apos;inscrire
+              </button>
+            </form>
+          </div>
+        </section>
       </main>
+
       <Footer locale={locale} />
     </div>
   );

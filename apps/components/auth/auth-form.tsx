@@ -172,14 +172,14 @@ export function AuthForm() {
   return (
     <div className="w-full max-w-sm">
       {/* Mode toggle */}
-      <div className="mb-8 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+      <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
         {(['login', 'register'] as const).map((value) => (
           <button
             key={value}
             type="button"
             onClick={() => setMode(value)}
             className={cn(
-              'rounded-lg px-3 py-2 text-sm font-medium transition-all',
+              'rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
               mode === value
                 ? 'bg-card text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',
@@ -190,7 +190,7 @@ export function AuthForm() {
         ))}
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-2xl font-semibold tracking-tight text-balance">
           {isRegister ? 'Create your account' : 'Welcome back'}
         </h1>
@@ -221,7 +221,7 @@ export function AuthForm() {
         </Button>
       </div>
 
-      <div className="my-6 flex items-center gap-3">
+      <div className="my-4 flex items-center gap-3">
         <span className="h-px flex-1 bg-border" />
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           or
@@ -229,7 +229,7 @@ export function AuthForm() {
         <span className="h-px flex-1 bg-border" />
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
         {isRegister && (
           <Field
             id={nameId}
@@ -295,7 +295,7 @@ export function AuthForm() {
               autoComplete={isRegister ? 'new-password' : 'current-password'}
               placeholder="••••••••"
               required
-              className="h-11 w-full rounded-lg border border-input bg-card pl-9 pr-10 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40"
+              className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-10 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40"
               {...(isRegister ? registerForm.register('password') : loginForm.register('password'))}
             />
             <button
@@ -377,7 +377,7 @@ export function AuthForm() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-muted-foreground">
+      <p className="mt-4 text-center text-sm text-muted-foreground">
         {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
         <button
           type="button"
@@ -417,7 +417,7 @@ function Field({
         </span>
         <input
           id={id}
-          className="h-11 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40"
+          className="h-10 w-full rounded-lg border border-input bg-card pl-9 pr-3 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40"
           {...props}
         />
       </div>

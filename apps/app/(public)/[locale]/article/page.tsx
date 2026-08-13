@@ -90,7 +90,7 @@ const allArticles: Article[] = [
 
 export default function ArticleListPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background select-none">
       <Header />
 
       <main className="flex-1">

@@ -1,20 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { routing } from "@/i18n/routing";
-import { isProfileSelected } from "@/lib/profile-selection";
 import { RouteTransition } from "@/components/route-transition";
 import { getDomainUrl } from "@/lib/domains";
 
 // Routes accessible to authenticated users within (auth)
-const AUTHENTICATED_ALLOWED_ROUTES = ["/profile-change", "/mfa-validate", "/mfa-setup", "/callback", "/verify-email", "/callback"];
+const AUTHENTICATED_ALLOWED_ROUTES = ["/mfa-validate", "/mfa-setup", "/callback", "/verify-email"];
 // Routes accessible without authentication within (auth)
 const PUBLIC_AUTH_ROUTES = ["/login"];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -35,17 +33,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Authenticated users on non-allowed routes: redirect based on profile selection
+    // Authenticated users on non-auth routes return to the public platform.
     if (isAuthenticated && !isAllowedAuthenticatedRoute) {
-      if (!isProfileSelected()) {
-        router.replace("/profile-change");
-      } else {
-        // Profile already selected — go to discover, not SSO
-        const locale = routing.defaultLocale;
-        window.location.href = getDomainUrl('main', `/${locale}/discover`);
-      }
+      const locale = routing.defaultLocale;
+      window.location.href = getDomainUrl("main", `/${locale}/discover`);
     }
-  }, [isAuthenticated, isLoading, router, isAllowedAuthenticatedRoute, isPublicAuthRoute]);
+  }, [isAuthenticated, isLoading, isAllowedAuthenticatedRoute, isPublicAuthRoute]);
 
   if (isLoading) {
     return (

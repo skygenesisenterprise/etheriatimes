@@ -23,7 +23,10 @@ const DOMAINS: Record<Environment, DomainConfig> = {
 }
 
 export function detectEnvironment(): Environment {
-  if (typeof window === 'undefined') return 'production'
+  if (typeof window === 'undefined') {
+    return process.env.NODE_ENV === 'production' ? 'production' : 'localhost'
+  }
+
   return window.location.hostname.includes('localhost') ? 'localhost' : 'production'
 }
 

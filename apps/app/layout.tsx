@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { Source_Serif_4, Inter } from "next/font/google";
+import { Newsreader, Public_Sans } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/context/Providers";
 import "../styles/globals.css";
 
-const sourceSerif = Source_Serif_4({
+const newsreader = Newsreader({
   subsets: ["latin"],
   variable: "--font-serif",
   display: "swap",
 });
 
-const inter = Inter({
+const publicSans = Public_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
@@ -51,7 +51,7 @@ export default function RootLayout({
     <html suppressHydrationWarning>
       <body
         suppressHydrationWarning
-        className={`${inter.variable} ${sourceSerif.variable} font-sans antialiased`}
+        className={`${publicSans.variable} ${newsreader.variable} font-sans antialiased`}
       >
         <Providers>{children}</Providers>
         <Analytics />
