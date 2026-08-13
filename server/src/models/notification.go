@@ -1,22 +1,32 @@
 package models
 
+import (
+	"time"
+
+	"gorm.io/datatypes"
+)
+
 type Notification struct {
-	ID        string `json:"id"`
-	UserID   string `json:"user_id"`
-	Type     string `json:"type"`
-	Title    string `json:"title"`
-	Message  string `json:"message,omitempty"`
-	Data     string `json:"data,omitempty"`
-	Read     bool   `json:"read"`
-	ReadAt   string `json:"read_at,omitempty"`
-	CreatedAt string `json:"created_at"`
+	Common
+	UserID   string         `gorm:"column:user_id;type:text;index;not null" json:"userId"`
+	Type     string         `gorm:"column:type;type:text;not null" json:"type"`
+	Title    string         `gorm:"column:title;type:text;not null" json:"title"`
+	Body     string         `gorm:"column:body;type:text" json:"body"`
+	Link     string         `gorm:"column:link;type:text" json:"link"`
+	Read     bool           `gorm:"column:read;default:false" json:"read"`
+	ReadAt   *time.Time     `gorm:"column:read_at" json:"readAt,omitempty"`
+	Metadata datatypes.JSON `gorm:"column:metadata;type:jsonb" json:"metadata,omitempty"`
 }
 
-type MarkNotificationsReadRequest struct {
-	NotificationIDs []string `json:"notification_ids" binding:"required"`
+func (Notification) TableName() string { return "notifications" }
+
+type NotificationTemplate struct {
+	Common
+	Type     string         `gorm:"column:type;type:text;uniqueIndex;not null" json:"type"`
+	Subject  string         `gorm:"column:subject;type:text;not null" json:"subject"`
+	Body     string         `gorm:"column:body;type:text;not null" json:"body"`
+	IsHtml   bool           `gorm:"column:is_html;default:false" json:"isHtml"`
+	Metadata datatypes.JSON `gorm:"column:metadata;type:jsonb" json:"metadata,omitempty"`
 }
 
-type MarkNotificationReadRequest struct {
-	AccountID        string   `json:"account_id"`
-	NotificationIDs []string `json:"notification_ids" binding:"required"`
-}
+func (NotificationTemplate) TableName() string { return "notification_templates" }

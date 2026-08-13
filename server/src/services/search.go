@@ -1,202 +1,71 @@
 package services
 
 import (
-	"encoding/json"
-	"fmt"
-	"sync"
-	"time"
+	"context"
 
-	"github.com/etheriatimes/etheriatimes/server/src/models"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/models"
 )
 
 type SearchService struct {
-	stalwart *StalwartService
-	cache    *SearchCache
+	repos *Repositories
 }
 
-type SearchCache struct {
-	mu    sync.RWMutex
-	items map[string]*CachedSearch
+func NewSearchService(repos *Repositories) *SearchService {
+	return &SearchService{repos: repos}
 }
 
-type CachedSearch struct {
-	Query   *models.SearchQuery
-	Result  *models.SearchResult
-	Expires time.Time
+type SearchResult struct {
+	Anime      []models.Anime     `json:"anime"`
+	Characters []models.Character `json:"characters"`
+	Studios    []models.Studio    `json:"studios"`
 }
 
-func NewSearchService(stalwart *StalwartService) *SearchService {
-	return &SearchService{
-		stalwart: stalwart,
-		cache: &SearchCache{
-			items: make(map[string]*CachedSearch),
-		},
-	}
-}
-
-func (s *SearchService) Search(query *models.SearchQuery) (*models.SearchResult, error) {
-	startTime := time.Now()
-
-	if query.Limit == 0 {
-		query.Limit = 50
-	}
-	if query.Limit > 500 {
-		query.Limit = 500
-	}
-
-	result, err := s.stalwart.Search(query)
-	if err != nil {
-		return nil, err
-	}
-
-	result.QueryTime = time.Since(startTime).Milliseconds()
-
-	s.cacheResult(query, result)
-
-	return result, nil
-}
-
-func (s *SearchService) QuickSearch(accountID, queryStr string, limit int) (*models.QuickSearchResult, error) {
-	if limit == 0 {
+func (s *SearchService) Search(ctx context.Context, query string, limit int) (*SearchResult, error) {
+	if limit <= 0 {
 		limit = 10
 	}
-
-	return s.stalwart.QuickSearch(accountID, queryStr, limit)
+	anime, _ := s.repos.Anime().Search(ctx, query, limit)
+	characters, _ := s.repos.Characters().Search(ctx, query, limit)
+	studios, _ := s.repos.Studios().Search(ctx, query, limit)
+	return &SearchResult{
+		Anime:      anime,
+		Characters: characters,
+		Studios:    studios,
+	}, nil
 }
 
-func (s *SearchService) SearchEmails(accountID, searchStr string, mailboxIDs []string, page, pageSize int) (*models.EmailList, error) {
-	if pageSize == 0 {
-		pageSize = 20
+func (s *SearchService) SearchAnime(ctx context.Context, query string, limit int) ([]models.Anime, error) {
+	if limit <= 0 {
+		limit = 20
 	}
-
-	query := &models.EmailQuery{
-		AccountID:  accountID,
-		MailboxIDs: mailboxIDs,
-		Sort: []models.SortOrder{
-			{Property: "date", IsAscending: false},
-		},
-		Limit:  pageSize,
-		Offset: (page - 1) * pageSize,
-	}
-
-	if searchStr != "" {
-		query.Subject = searchStr
-		query.Body = searchStr
-	}
-
-	return s.stalwart.GetEmails(query)
+	return s.repos.Anime().Search(ctx, query, limit)
 }
 
-func (s *SearchService) SearchBySender(accountID, sender string, page, pageSize int) (*models.EmailList, error) {
-	if pageSize == 0 {
-		pageSize = 20
+func (s *SearchService) SearchCharacters(ctx context.Context, query string, limit int) ([]models.Character, error) {
+	if limit <= 0 {
+		limit = 20
 	}
-
-	query := &models.EmailQuery{
-		AccountID: accountID,
-		From:      sender,
-		Sort: []models.SortOrder{
-			{Property: "date", IsAscending: false},
-		},
-		Limit:  pageSize,
-		Offset: (page - 1) * pageSize,
-	}
-
-	return s.stalwart.GetEmails(query)
+	return s.repos.Characters().Search(ctx, query, limit)
 }
 
-func (s *SearchService) SearchByDateRange(accountID string, startDate, endDate time.Time, mailboxIDs []string) (*models.EmailList, error) {
-	query := &models.EmailQuery{
-		AccountID:  accountID,
-		MailboxIDs: mailboxIDs,
-		DateAfter:  &startDate,
-		DateBefore: &endDate,
-		Sort: []models.SortOrder{
-			{Property: "date", IsAscending: false},
-		},
-		Limit: 100,
+func (s *SearchService) SearchStudios(ctx context.Context, query string, limit int) ([]models.Studio, error) {
+	if limit <= 0 {
+		limit = 20
 	}
-
-	return s.stalwart.GetEmails(query)
+	return s.repos.Studios().Search(ctx, query, limit)
 }
 
-func (s *SearchService) SearchWithAttachments(accountID string, mailboxIDs []string, page, pageSize int) (*models.EmailList, error) {
-	if pageSize == 0 {
-		pageSize = 20
+func (s *SearchService) Suggestions(ctx context.Context, query string, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = 10
 	}
-
-	hasAttachment := true
-	query := &models.EmailQuery{
-		AccountID:     accountID,
-		MailboxIDs:    mailboxIDs,
-		HasAttachment: &hasAttachment,
-		Sort: []models.SortOrder{
-			{Property: "date", IsAscending: false},
-		},
-		Limit:  pageSize,
-		Offset: (page - 1) * pageSize,
-	}
-
-	return s.stalwart.GetEmails(query)
-}
-
-func (s *SearchService) SearchContacts(accountID, query string) (*models.ContactList, error) {
-	return s.stalwart.SearchContacts(accountID, query)
-}
-
-func (s *SearchService) AdvancedSearch(query *models.SearchQuery) (*models.SearchResult, error) {
-	startTime := time.Now()
-
-	queryJSON, _ := json.Marshal(query)
-	cacheKey := fmt.Sprintf("%x", queryJSON)
-
-	s.cache.mu.RLock()
-	if cached, ok := s.cache.items[cacheKey]; ok {
-		if time.Now().Before(cached.Expires) {
-			s.cache.mu.RUnlock()
-			return cached.Result, nil
-		}
-	}
-	s.cache.mu.RUnlock()
-
-	result, err := s.stalwart.Search(query)
+	anime, err := s.repos.Anime().Search(ctx, query, limit)
 	if err != nil {
 		return nil, err
 	}
-
-	result.QueryTime = time.Since(startTime).Milliseconds()
-
-	return result, nil
-}
-
-func (s *SearchService) cacheResult(query *models.SearchQuery, result *models.SearchResult) {
-	queryJSON, _ := json.Marshal(query)
-	cacheKey := fmt.Sprintf("%x", queryJSON)
-
-	s.cache.mu.Lock()
-	defer s.cache.mu.Unlock()
-
-	s.cache.items[cacheKey] = &CachedSearch{
-		Query:   query,
-		Result:  result,
-		Expires: time.Now().Add(5 * time.Minute),
+	suggestions := make([]string, 0, len(anime))
+	for _, a := range anime {
+		suggestions = append(suggestions, a.Title)
 	}
-}
-
-func (s *SearchService) ClearCache() {
-	s.cache.mu.Lock()
-	defer s.cache.mu.Unlock()
-
-	s.cache.items = make(map[string]*CachedSearch)
-}
-
-func (s *SearchService) ClearUserCache(accountID string) {
-	s.cache.mu.Lock()
-	defer s.cache.mu.Unlock()
-
-	for key, cached := range s.cache.items {
-		if cached.Query.AccountID == accountID {
-			delete(s.cache.items, key)
-		}
-	}
+	return suggestions, nil
 }

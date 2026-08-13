@@ -17,7 +17,7 @@ const imageLocalPatterns: NonNullable<NextConfig["images"]>["localPatterns"] = [
   { pathname: "/api/v1/integrations/plex/image" },
 ];
 const imageRemotePatterns: NonNullable<NextConfig["images"]>["remotePatterns"] = [
-  { protocol: "https", hostname: "kami-sama.tv", pathname: "/**" },
+  { protocol: "https", hostname: "etheriatimes.com", pathname: "/**" },
   { protocol: "https", hostname: "api.dicebear.com", pathname: "/**" },
   { protocol: "https", hostname: "avatars.githubusercontent.com", pathname: "/**" },
   { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
@@ -36,7 +36,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: "../",
   },
-  allowedDevOrigins: ["kami-sama.tv", "api.kami-sama.tv", "sso.kami-sama.tv", "kami-sama.localhost", "api.kami-sama.localhost", "sso.kami-sama.localhost", "studios.kami-sama.localhost"],
+  allowedDevOrigins: ["etheriatimes.com", "api.etheriatimes.com", "sso.etheriatimes.com", "etheriatimes.localhost", "api.etheriatimes.localhost", "sso.etheriatimes.localhost", "studios.etheriatimes.localhost"],
   outputFileTracingExcludes: {
     "*": ["test/**"],
   },

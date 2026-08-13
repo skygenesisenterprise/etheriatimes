@@ -1,101 +1,75 @@
 package services
 
 import (
-	"github.com/etheriatimes/etheriatimes/server/src/models"
+	"context"
+	"strings"
+	"time"
+
+	"github.com/skygenesisenterprise/etheriatimes/server/src/models"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/utils"
 )
 
 type TagService struct {
-	stalwart *StalwartService
+	repos *Repositories
 }
 
-func NewTagService(stalwart *StalwartService) *TagService {
-	return &TagService{
-		stalwart: stalwart,
+func NewTagService(repos *Repositories) *TagService {
+	return &TagService{repos: repos}
+}
+
+func (s *TagService) Create(ctx context.Context, userID, name, slug string) (*models.Tag, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, utils.ErrValidationFailed
 	}
+	if slug == "" {
+		slug = generateSlug(name)
+	}
+	now := time.Now().UTC()
+	tag := &models.Tag{
+		Common: models.Common{ID: utils.NewID(), CreatedAt: now, UpdatedAt: now},
+		Name:   name,
+		Slug:   slug,
+	}
+	if err := s.repos.Tags().Create(ctx, tag); err != nil {
+		return nil, err
+	}
+	return tag, nil
 }
 
-func (s *TagService) GetTags(accountID string) ([]*models.Tag, error) {
-	return s.stalwart.GetTags(accountID)
+func (s *TagService) List(ctx context.Context) ([]models.Tag, error) {
+	return s.repos.Tags().List(ctx)
 }
 
-func (s *TagService) GetTag(accountID, tagID string) (*models.Tag, error) {
-	tags, err := s.GetTags(accountID)
+func (s *TagService) GetByID(ctx context.Context, id string) (*models.Tag, error) {
+	return s.repos.Tags().GetByID(ctx, id)
+}
+
+func (s *TagService) GetBySlug(ctx context.Context, slug string) (*models.Tag, error) {
+	return s.repos.Tags().GetBySlug(ctx, slug)
+}
+
+func (s *TagService) Update(ctx context.Context, userID, id string, req struct {
+	Name *string `json:"name"`
+	Slug *string `json:"slug"`
+}) (*models.Tag, error) {
+	tag, err := s.repos.Tags().GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, tag := range tags {
-		if tag.ID == tagID {
-			return tag, nil
-		}
+	if req.Name != nil {
+		tag.Name = *req.Name
 	}
-
-	return nil, nil
-}
-
-func (s *TagService) CreateTag(req *models.CreateTagRequest) (*models.Tag, error) {
-	if req.Color == "" {
-		req.Color = "#808080"
+	if req.Slug != nil {
+		tag.Slug = *req.Slug
 	}
-
-	return s.stalwart.CreateTag(req)
+	tag.UpdatedAt = time.Now().UTC()
+	if err := s.repos.Tags().Update(ctx, tag); err != nil {
+		return nil, err
+	}
+	return tag, nil
 }
 
-func (s *TagService) UpdateTag(req *models.UpdateTagRequest) (*models.Tag, error) {
-	return s.stalwart.UpdateTag(req)
-}
-
-func (s *TagService) DeleteTag(accountID, tagID string) error {
-	return s.stalwart.DeleteTag(accountID, tagID)
-}
-
-func (s *TagService) RenameTag(accountID, tagID, newName string) (*models.Tag, error) {
-	return s.UpdateTag(&models.UpdateTagRequest{
-		AccountID: accountID,
-		ID:        tagID,
-		Name:      newName,
-	})
-}
-
-func (s *TagService) ChangeTagColor(accountID, tagID, newColor string) (*models.Tag, error) {
-	return s.UpdateTag(&models.UpdateTagRequest{
-		AccountID: accountID,
-		ID:        tagID,
-		Color:     newColor,
-	})
-}
-
-func (s *TagService) ApplyTagToEmails(accountID, tagID string, emailIDs []string) error {
-	return s.stalwart.SetLabels(&models.SetLabelsRequest{
-		AccountID: accountID,
-		EmailIDs:  emailIDs,
-		Labels:    []string{tagID},
-	})
-}
-
-func (s *TagService) RemoveTagFromEmails(accountID, tagID string, emailIDs []string) error {
-	return s.stalwart.SetLabels(&models.SetLabelsRequest{
-		AccountID: accountID,
-		EmailIDs:  emailIDs,
-		Labels:    []string{tagID},
-	})
-}
-
-type TagColor struct {
-	Color string
-	Name  string
-}
-
-var PredefinedTagColors = []TagColor{
-	{Color: "#FF0000", Name: "Red"},
-	{Color: "#FFA500", Name: "Orange"},
-	{Color: "#FFFF00", Name: "Yellow"},
-	{Color: "#008000", Name: "Green"},
-	{Color: "#008080", Name: "Teal"},
-	{Color: "#0000FF", Name: "Blue"},
-	{Color: "#000080", Name: "Navy"},
-	{Color: "#800080", Name: "Purple"},
-	{Color: "#FF00FF", Name: "Magenta"},
-	{Color: "#808080", Name: "Gray"},
-	{Color: "#000000", Name: "Black"},
+func (s *TagService) Delete(ctx context.Context, id string) error {
+	return s.repos.Tags().Delete(ctx, id)
 }

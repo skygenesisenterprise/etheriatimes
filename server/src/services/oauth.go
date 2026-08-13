@@ -1,385 +1,691 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/etheriatimes/etheriatimes/server/src/config"
-	"github.com/etheriatimes/etheriatimes/server/src/models"
+	"github.com/gin-gonic/gin"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/config"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/interfaces"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/models"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/utils"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/github"
+	"golang.org/x/oauth2/google"
 )
 
-// Provider defines the interface for OAuth2 providers
-type OAuthProviderInterface interface {
-	Name() string
-	GetAuthURL(state, redirectURI string) string
-	ExchangeCode(code, redirectURI string) (*models.OAuthToken, error)
-	GetUserInfo(token *models.OAuthToken) (*models.OAuthUserInfo, error)
-}
+const oauthStatePrefix = "oauth_state:"
 
-// googleProvider implements OAuth2 for Google
-type googleProvider struct {
-	clientID     string
-	clientSecret string
-	redirectURL  string
-}
-
-func newGoogleProvider(cfg config.OAuthProviderConfig) *googleProvider {
-	return &googleProvider{
-		clientID:     cfg.ClientID,
-		clientSecret: cfg.ClientSecret,
-		redirectURL:  cfg.RedirectURL,
-	}
-}
-
-func (p *googleProvider) Name() string { return "google" }
-
-func (p *googleProvider) GetAuthURL(state, redirectURI string) string {
-	u, _ := url.Parse("https://accounts.google.com/o/oauth2/v2/auth")
-	q := u.Query()
-	q.Set("client_id", p.clientID)
-	q.Set("redirect_uri", firstNonEmpty(redirectURI, p.redirectURL))
-	q.Set("response_type", "code")
-	q.Set("scope", "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send")
-	q.Set("state", state)
-	q.Set("access_type", "offline")
-	q.Set("prompt", "consent")
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (p *googleProvider) ExchangeCode(code, redirectURI string) (*models.OAuthToken, error) {
-	data := url.Values{}
-	data.Set("grant_type", "authorization_code")
-	data.Set("code", code)
-	data.Set("redirect_uri", firstNonEmpty(redirectURI, p.redirectURL))
-	data.Set("client_id", p.clientID)
-	data.Set("client_secret", p.clientSecret)
-
-	resp, err := http.Post("https://oauth2.googleapis.com/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to exchange code: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token exchange failed (%d): %s", resp.StatusCode, string(body))
-	}
-
-	var token models.OAuthToken
-	if err := json.Unmarshal(body, &token); err != nil {
-		return nil, fmt.Errorf("failed to parse token response: %w", err)
-	}
-	return &token, nil
-}
-
-func (p *googleProvider) GetUserInfo(token *models.OAuthToken) (*models.OAuthUserInfo, error) {
-	req, _ := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v2/userinfo", nil)
-	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("userinfo failed (%d): %s", resp.StatusCode, string(body))
-	}
-
-	var result struct {
-		ID      string `json:"id"`
-		Email   string `json:"email"`
-		Name    string `json:"name"`
-		Picture string `json:"picture"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse userinfo: %w", err)
-	}
-
-	return &models.OAuthUserInfo{
-		ID:       result.ID,
-		Email:    result.Email,
-		Name:     result.Name,
-		Picture:  result.Picture,
-		Provider: p.Name(),
-	}, nil
-}
-
-// microsoftProvider implements OAuth2 for Microsoft
-type microsoftProvider struct {
-	clientID     string
-	clientSecret string
-	redirectURL  string
-	tenant       string
-}
-
-func newMicrosoftProvider(cfg config.OAuthProviderConfig) *microsoftProvider {
-	return &microsoftProvider{
-		clientID:     cfg.ClientID,
-		clientSecret: cfg.ClientSecret,
-		redirectURL:  cfg.RedirectURL,
-		tenant:       cfg.Tenant,
-	}
-}
-
-func (p *microsoftProvider) Name() string { return "microsoft" }
-
-func (p *microsoftProvider) GetAuthURL(state, redirectURI string) string {
-	u, _ := url.Parse(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/authorize", p.tenant))
-	q := u.Query()
-	q.Set("client_id", p.clientID)
-	q.Set("redirect_uri", firstNonEmpty(redirectURI, p.redirectURL))
-	q.Set("response_type", "code")
-	q.Set("scope", "openid email profile offline_access https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send")
-	q.Set("state", state)
-	q.Set("response_mode", "query")
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (p *microsoftProvider) ExchangeCode(code, redirectURI string) (*models.OAuthToken, error) {
-	data := url.Values{}
-	data.Set("grant_type", "authorization_code")
-	data.Set("code", code)
-	data.Set("redirect_uri", firstNonEmpty(redirectURI, p.redirectURL))
-	data.Set("client_id", p.clientID)
-	data.Set("client_secret", p.clientSecret)
-
-	resp, err := http.Post(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", p.tenant), "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to exchange code: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token exchange failed (%d): %s", resp.StatusCode, string(body))
-	}
-
-	var token models.OAuthToken
-	if err := json.Unmarshal(body, &token); err != nil {
-		return nil, fmt.Errorf("failed to parse token response: %w", err)
-	}
-	return &token, nil
-}
-
-func (p *microsoftProvider) GetUserInfo(token *models.OAuthToken) (*models.OAuthUserInfo, error) {
-	req, _ := http.NewRequest("GET", "https://graph.microsoft.com/v1.0/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("userinfo failed (%d): %s", resp.StatusCode, string(body))
-	}
-
-	var result struct {
-		ID                string `json:"id"`
-		Mail              string `json:"mail"`
-		UserPrincipalName string `json:"userPrincipalName"`
-		DisplayName       string `json:"displayName"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse userinfo: %w", err)
-	}
-
-	email := result.Mail
-	if email == "" {
-		email = result.UserPrincipalName
-	}
-
-	return &models.OAuthUserInfo{
-		ID:       result.ID,
-		Email:    email,
-		Name:     result.DisplayName,
-		Provider: p.Name(),
-	}, nil
-}
-
-// protonProvider implements OAuth2 for Proton Mail
-type protonProvider struct {
-	clientID     string
-	clientSecret string
-	redirectURL  string
-}
-
-func newProtonProvider(cfg config.OAuthProviderConfig) *protonProvider {
-	return &protonProvider{
-		clientID:     cfg.ClientID,
-		clientSecret: cfg.ClientSecret,
-		redirectURL:  cfg.RedirectURL,
-	}
-}
-
-func (p *protonProvider) Name() string { return "proton" }
-
-func (p *protonProvider) GetAuthURL(state, redirectURI string) string {
-	u, _ := url.Parse("https://account.proton.me/oauth/authorize")
-	q := u.Query()
-	q.Set("client_id", p.clientID)
-	q.Set("redirect_uri", firstNonEmpty(redirectURI, p.redirectURL))
-	q.Set("response_type", "code")
-	q.Set("scope", "email mail")
-	q.Set("state", state)
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-func (p *protonProvider) ExchangeCode(code, redirectURI string) (*models.OAuthToken, error) {
-	data := url.Values{}
-	data.Set("grant_type", "authorization_code")
-	data.Set("code", code)
-	data.Set("redirect_uri", firstNonEmpty(redirectURI, p.redirectURL))
-	data.Set("client_id", p.clientID)
-	data.Set("client_secret", p.clientSecret)
-
-	resp, err := http.Post("https://account.proton.me/oauth/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to exchange code: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token exchange failed (%d): %s", resp.StatusCode, string(body))
-	}
-
-	var token models.OAuthToken
-	if err := json.Unmarshal(body, &token); err != nil {
-		return nil, fmt.Errorf("failed to parse token response: %w", err)
-	}
-	return &token, nil
-}
-
-func (p *protonProvider) GetUserInfo(token *models.OAuthToken) (*models.OAuthUserInfo, error) {
-	req, _ := http.NewRequest("GET", "https://account.proton.me/oauth/userinfo", nil)
-	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		// Fallback: Proton does not always expose a userinfo endpoint in the same way.
-		// We return a minimal struct and rely on the email being passed separately if needed.
-		return &models.OAuthUserInfo{
-			ID:       "",
-			Email:    "",
-			Name:     "",
-			Provider: p.Name(),
-		}, nil
-	}
-
-	var result struct {
-		ID      string `json:"id,omitempty"`
-		Email   string `json:"email,omitempty"`
-		Name    string `json:"name,omitempty"`
-		Picture string `json:"picture,omitempty"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse userinfo: %w", err)
-	}
-
-	return &models.OAuthUserInfo{
-		ID:       result.ID,
-		Email:    result.Email,
-		Name:     result.Name,
-		Picture:  result.Picture,
-		Provider: p.Name(),
-	}, nil
-}
-
-// OAuthService manages OAuth providers and state
 type OAuthService struct {
-	providers map[string]OAuthProviderInterface
-	states    map[string]*models.OAuthState
-	mu        sync.RWMutex
+	cfg          config.OAuthConfig
+	repos        *Repositories
+	authSvc      *AuthService
+	identity     interfaces.IdentityProvider
+	workspaceSvc *WorkspaceService
+	store        OAuthStateStore
 }
 
-func NewOAuthService(cfg config.OAuthConfig) *OAuthService {
-	s := &OAuthService{
-		providers: make(map[string]OAuthProviderInterface),
-		states:    make(map[string]*models.OAuthState),
-	}
-
-	if cfg.Google.ClientID != "" && cfg.Google.ClientSecret != "" {
-		s.providers["google"] = newGoogleProvider(cfg.Google)
-	}
-	if cfg.Microsoft.ClientID != "" && cfg.Microsoft.ClientSecret != "" {
-		s.providers["microsoft"] = newMicrosoftProvider(cfg.Microsoft)
-	}
-	if cfg.Proton.ClientID != "" && cfg.Proton.ClientSecret != "" {
-		s.providers["proton"] = newProtonProvider(cfg.Proton)
-	}
-
-	return s
+type OAuthStateStore interface {
+	Set(key, value string, ttl time.Duration) error
+	Get(key string) (string, error)
+	Delete(key string) error
 }
 
-func (s *OAuthService) GetProvider(name string) (OAuthProviderInterface, bool) {
-	p, ok := s.providers[name]
-	return p, ok
+type oAuthStateData struct {
+	Provider  string `json:"provider"`
+	Action    string `json:"action"` // "login" or "link"
+	UserID    string `json:"userId,omitempty"`
+	Nonce     string `json:"nonce"`
+	ExpiresAt int64  `json:"expiresAt"`
 }
 
-func (s *OAuthService) IsConfigured(name string) bool {
-	_, ok := s.providers[name]
-	return ok
+type OAuthUserInfo struct {
+	ID          string
+	Email       string
+	DisplayName string
+	AvatarURL   string
 }
 
-func (s *OAuthService) GenerateState(provider, redirectURI string) *models.OAuthState {
+type OAuthResult struct {
+	AuthResult  *AuthResult `json:"authResult,omitempty"`
+	RedirectURL string      `json:"redirectUrl"`
+	Linked      bool        `json:"linked,omitempty"`
+}
+
+type memoryOAuthStateStore struct {
+	store map[string]entry
+}
+
+type entry struct {
+	value     string
+	expiresAt time.Time
+}
+
+func newMemoryOAuthStateStore() *memoryOAuthStateStore {
+	return &memoryOAuthStateStore{store: make(map[string]entry)}
+}
+
+func (m *memoryOAuthStateStore) Set(key, value string, ttl time.Duration) error {
+	m.store[key] = entry{value: value, expiresAt: time.Now().Add(ttl)}
+	return nil
+}
+
+func (m *memoryOAuthStateStore) Get(key string) (string, error) {
+	e, ok := m.store[key]
+	if !ok {
+		return "", errors.New("state not found")
+	}
+	if time.Now().After(e.expiresAt) {
+		delete(m.store, key)
+		return "", errors.New("state expired")
+	}
+	return e.value, nil
+}
+
+func (m *memoryOAuthStateStore) Delete(key string) error {
+	delete(m.store, key)
+	return nil
+}
+
+func NewOAuthService(cfg config.OAuthConfig, repos *Repositories, authSvc *AuthService, identity interfaces.IdentityProvider, workspaceSvc *WorkspaceService, store OAuthStateStore) *OAuthService {
+	if store == nil {
+		store = newMemoryOAuthStateStore()
+	}
+	return &OAuthService{
+		cfg:          cfg,
+		repos:        repos,
+		authSvc:      authSvc,
+		identity:     identity,
+		workspaceSvc: workspaceSvc,
+		store:        store,
+	}
+}
+
+func (s *OAuthService) oauthConfig(provider string) (*oauth2.Config, config.OAuthProviderConfig, error) {
+	var pc config.OAuthProviderConfig
+	switch provider {
+	case "google":
+		pc = s.cfg.Google
+	case "github":
+		pc = s.cfg.GitHub
+	case "discord":
+		pc = s.cfg.Discord
+	case "apple":
+		pc = s.cfg.Apple
+	default:
+		return nil, pc, utils.ErrOAuthProviderNotConfigured
+	}
+	if !pc.Enabled || pc.ClientID == "" || pc.ClientSecret == "" {
+		return nil, pc, utils.ErrOAuthProviderNotConfigured
+	}
+	endpoint := google.Endpoint
+	scopes := []string{"openid", "profile", "email"}
+	switch provider {
+	case "github":
+		endpoint = github.Endpoint
+		scopes = []string{"read:user", "user:email"}
+	case "discord":
+		endpoint = oauth2.Endpoint{
+			AuthURL:  "https://discord.com/api/oauth2/authorize",
+			TokenURL: "https://discord.com/api/oauth2/token",
+		}
+		scopes = []string{"identify", "email"}
+	case "apple":
+		endpoint = oauth2.Endpoint{
+			AuthURL:  "https://appleid.apple.com/auth/authorize",
+			TokenURL: "https://appleid.apple.com/auth/token",
+		}
+		scopes = []string{"name", "email"}
+	}
+	cfg := &oauth2.Config{
+		ClientID:     pc.ClientID,
+		ClientSecret: pc.ClientSecret,
+		RedirectURL:  pc.RedirectURL,
+		Scopes:       scopes,
+		Endpoint:     endpoint,
+	}
+	return cfg, pc, nil
+}
+
+func generateNonce() (string, error) {
 	b := make([]byte, 32)
-	rand.Read(b)
-	state := &models.OAuthState{
-		State:       base64.URLEncoding.EncodeToString(b),
-		Provider:    provider,
-		RedirectURI: redirectURI,
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-
-	s.mu.Lock()
-	s.states[state.State] = state
-	s.mu.Unlock()
-
-	// Clean up state after 10 minutes
-	go func() {
-		time.Sleep(10 * time.Minute)
-		s.mu.Lock()
-		delete(s.states, state.State)
-		s.mu.Unlock()
-	}()
-
-	return state
+	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-func (s *OAuthService) ValidateState(state string) (*models.OAuthState, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	st, ok := s.states[state]
-	if ok {
-		delete(s.states, state)
+func (s *OAuthService) GetAuthorizationURL(ctx context.Context, provider, action, userID string) (string, error) {
+	cfg, _, err := s.oauthConfig(provider)
+	if err != nil {
+		return "", err
 	}
-	return st, ok
+
+	nonce, err := generateNonce()
+	if err != nil {
+		return "", err
+	}
+	state := &oAuthStateData{
+		Provider:  provider,
+		Action:    action,
+		UserID:    userID,
+		Nonce:     nonce,
+		ExpiresAt: time.Now().Add(s.cfg.StateTTL).Unix(),
+	}
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		return "", err
+	}
+	stateKey := oauthStatePrefix + nonce
+
+	if err := s.store.Set(stateKey, string(stateJSON), s.cfg.StateTTL); err != nil {
+		return "", fmt.Errorf("store oauth state: %w", err)
+	}
+
+	authURL := cfg.AuthCodeURL(nonce, oauth2.AccessTypeOffline)
+	if provider == "apple" {
+		authURL += "&response_mode=form_post"
+	}
+	return authURL, nil
 }
 
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
+func (s *OAuthService) HandleCallback(ctx context.Context, provider, code, stateNonce string, meta RequestMetadata) (*OAuthResult, error) {
+	cfg, _, err := s.oauthConfig(provider)
+	if err != nil {
+		return nil, err
 	}
-	return b
+
+	stateKey := oauthStatePrefix + stateNonce
+	rawState, err := s.store.Get(stateKey)
+	if err != nil {
+		return nil, utils.ErrOAuthStateInvalid
+	}
+	_ = s.store.Delete(stateKey)
+
+	var state oAuthStateData
+	if err := json.Unmarshal([]byte(rawState), &state); err != nil {
+		return nil, utils.ErrOAuthStateInvalid
+	}
+	if state.Provider != provider || state.Nonce != stateNonce {
+		return nil, utils.ErrOAuthStateInvalid
+	}
+	if time.Now().Unix() > state.ExpiresAt {
+		return nil, utils.ErrOAuthStateInvalid
+	}
+
+	token, err := cfg.Exchange(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("token exchange: %w", err)
+	}
+
+	accessToken := token.AccessToken
+	if provider == "apple" {
+		if idToken, ok := token.Extra("id_token").(string); ok && idToken != "" {
+			accessToken = idToken
+		}
+	}
+
+	userInfo, err := s.fetchUserInfo(ctx, provider, accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("fetch user info: %w", err)
+	}
+
+	switch state.Action {
+	case "login":
+		return s.handleLoginOAuth(ctx, provider, userInfo, token, meta)
+	case "link":
+		return s.handleLinkOAuth(ctx, provider, userInfo, token, state.UserID)
+	default:
+		return nil, utils.ErrOAuthStateInvalid
+	}
+}
+
+func (s *OAuthService) fetchUserInfo(ctx context.Context, provider, accessToken string) (*OAuthUserInfo, error) {
+	switch provider {
+	case "google":
+		return s.fetchGoogleUserInfo(ctx, accessToken)
+	case "github":
+		return s.fetchGitHubUserInfo(ctx, accessToken)
+	case "discord":
+		return s.fetchDiscordUserInfo(ctx, accessToken)
+	case "apple":
+		return s.fetchAppleUserInfo(ctx, accessToken)
+	default:
+		return nil, utils.ErrOAuthProviderNotConfigured
+	}
+}
+
+func (s *OAuthService) fetchGoogleUserInfo(ctx context.Context, accessToken string) (*OAuthUserInfo, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.googleapis.com/oauth2/v2/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	var data struct {
+		ID            string `json:"id"`
+		Email         string `json:"email"`
+		VerifiedEmail bool   `json:"verified_email"`
+		Name          string `json:"name"`
+		Picture       string `json:"picture"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, err
+	}
+	if data.Email == "" {
+		return nil, errors.New("google account has no email")
+	}
+	return &OAuthUserInfo{
+		ID:          data.ID,
+		Email:       strings.ToLower(strings.TrimSpace(data.Email)),
+		DisplayName: data.Name,
+		AvatarURL:   data.Picture,
+	}, nil
+}
+
+func (s *OAuthService) fetchGitHubUserInfo(ctx context.Context, accessToken string) (*OAuthUserInfo, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	var data struct {
+		ID        int    `json:"id"`
+		Email     string `json:"email"`
+		Name      string `json:"name"`
+		Login     string `json:"login"`
+		AvatarURL string `json:"avatar_url"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, err
+	}
+
+	if data.Email == "" {
+		emailReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user/emails", nil)
+		emailReq.Header.Set("Authorization", "Bearer "+accessToken)
+		emailReq.Header.Set("Accept", "application/vnd.github.v3+json")
+		emailResp, err := http.DefaultClient.Do(emailReq)
+		if err == nil {
+			defer emailResp.Body.Close()
+			emailBody, _ := io.ReadAll(io.LimitReader(emailResp.Body, 1<<20))
+			var emails []struct {
+				Email    string `json:"email"`
+				Primary  bool   `json:"primary"`
+				Verified bool   `json:"verified"`
+			}
+			if json.Unmarshal(emailBody, &emails) == nil {
+				for _, e := range emails {
+					if e.Primary && e.Verified {
+						data.Email = e.Email
+						break
+					}
+				}
+				if data.Email == "" && len(emails) > 0 {
+					data.Email = emails[0].Email
+				}
+			}
+		}
+	}
+
+	if data.Email == "" {
+		return nil, errors.New("github account has no email")
+	}
+
+	displayName := data.Name
+	if displayName == "" {
+		displayName = data.Login
+	}
+
+	return &OAuthUserInfo{
+		ID:          fmt.Sprintf("%d", data.ID),
+		Email:       strings.ToLower(strings.TrimSpace(data.Email)),
+		DisplayName: displayName,
+		AvatarURL:   data.AvatarURL,
+	}, nil
+}
+
+func (s *OAuthService) fetchDiscordUserInfo(ctx context.Context, accessToken string) (*OAuthUserInfo, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://discord.com/api/users/@me", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	var data struct {
+		ID            string `json:"id"`
+		Email         string `json:"email"`
+		Username      string `json:"username"`
+		GlobalName    string `json:"global_name"`
+		Avatar        string `json:"avatar"`
+		Verified      bool   `json:"verified"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, err
+	}
+
+	if data.Email == "" {
+		return nil, errors.New("discord account has no email")
+	}
+
+	displayName := data.GlobalName
+	if displayName == "" {
+		displayName = data.Username
+	}
+
+	avatarURL := ""
+	if data.Avatar != "" {
+		avatarURL = fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.png", data.ID, data.Avatar)
+	}
+
+	return &OAuthUserInfo{
+		ID:          data.ID,
+		Email:       strings.ToLower(strings.TrimSpace(data.Email)),
+		DisplayName: displayName,
+		AvatarURL:   avatarURL,
+	}, nil
+}
+
+func (s *OAuthService) fetchAppleUserInfo(ctx context.Context, accessToken string) (*OAuthUserInfo, error) {
+	parts := strings.Split(accessToken, ".")
+	if len(parts) != 3 {
+		return nil, errors.New("invalid apple id token")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("decode apple id token: %w", err)
+	}
+	var claims struct {
+		Sub   string `json:"sub"`
+		Email string `json:"email"`
+		Name  *struct {
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+		} `json:"name"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, fmt.Errorf("parse apple id token: %w", err)
+	}
+	if claims.Email == "" {
+		return nil, errors.New("apple account has no email")
+	}
+	displayName := ""
+	if claims.Name != nil {
+		displayName = strings.TrimSpace(claims.Name.FirstName + " " + claims.Name.LastName)
+	}
+	if displayName == "" {
+		displayName = strings.Split(claims.Email, "@")[0]
+	}
+	return &OAuthUserInfo{
+		ID:          claims.Sub,
+		Email:       strings.ToLower(strings.TrimSpace(claims.Email)),
+		DisplayName: displayName,
+		AvatarURL:   "",
+	}, nil
+}
+
+func (s *OAuthService) handleLoginOAuth(ctx context.Context, provider string, userInfo *OAuthUserInfo, token *oauth2.Token, meta RequestMetadata) (*OAuthResult, error) {
+	existing, err := s.repos.AuthAccounts().GetByProvider(ctx, provider, userInfo.ID)
+	if err == nil && existing != nil {
+		user, err := s.repos.Users().GetByID(ctx, existing.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if user.DisabledAt != nil || user.Status == "suspended" {
+			return nil, utils.ErrAccountSuspended
+		}
+		if user.Status == "pending" {
+			return nil, utils.ErrAccountPending
+		}
+
+		workspaceID, roles, permissions, err := s.authSvc.resolvePrimaryWorkspace(ctx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		result, err := s.authSvc.createAuthenticatedSession(ctx, user, workspaceID, permissions, roles, meta)
+		if err != nil {
+			return nil, err
+		}
+		return &OAuthResult{AuthResult: result}, nil
+	}
+
+	existingUserByEmail, err := s.repos.Users().GetByEmail(ctx, userInfo.Email)
+	if err != nil && !strings.Contains(err.Error(), "USER_NOT_FOUND") {
+		return nil, err
+	}
+
+	if existingUserByEmail != nil {
+		if existingUserByEmail.DisabledAt != nil || existingUserByEmail.Status == "suspended" {
+			return nil, utils.ErrAccountSuspended
+		}
+		if existingUserByEmail.Status == "pending" {
+			return nil, utils.ErrAccountPending
+		}
+
+		existingAccount, _ := s.repos.AuthAccounts().GetByUserIDAndProvider(ctx, existingUserByEmail.ID, provider)
+		if existingAccount != nil {
+			workspaceID, roles, permissions, err := s.authSvc.resolvePrimaryWorkspace(ctx, existingUserByEmail.ID)
+			if err != nil {
+				return nil, err
+			}
+			result, err := s.authSvc.createAuthenticatedSession(ctx, existingUserByEmail, workspaceID, permissions, roles, meta)
+			if err != nil {
+				return nil, err
+			}
+			return &OAuthResult{AuthResult: result}, nil
+		}
+
+		now := time.Now().UTC()
+		account := &models.AuthAccount{
+			Common:            models.Common{ID: utils.NewID(), CreatedAt: now, UpdatedAt: now},
+			UserID:            existingUserByEmail.ID,
+			Provider:          provider,
+			ProviderAccountID: userInfo.ID,
+			AccessToken:       &token.AccessToken,
+			Scopes:            ptr(strings.Join(oauthScopes(provider), " ")),
+		}
+		if token.RefreshToken != "" {
+			account.RefreshToken = &token.RefreshToken
+		}
+		if !token.Expiry.IsZero() {
+			account.TokenExpiresAt = &token.Expiry
+		}
+		if err := s.repos.AuthAccounts().Create(ctx, account); err != nil {
+			return nil, err
+		}
+
+		workspaceID, roles, permissions, err := s.authSvc.resolvePrimaryWorkspace(ctx, existingUserByEmail.ID)
+		if err != nil {
+			return nil, err
+		}
+		result, err := s.authSvc.createAuthenticatedSession(ctx, existingUserByEmail, workspaceID, permissions, roles, meta)
+		if err != nil {
+			return nil, err
+		}
+		return &OAuthResult{AuthResult: result}, nil
+	}
+
+	now := time.Now().UTC()
+	userID := utils.NewID()
+	user := &models.User{
+		Common:          models.Common{ID: userID, CreatedAt: now, UpdatedAt: now},
+		Email:           userInfo.Email,
+		EmailNormalized: strings.ToLower(strings.TrimSpace(userInfo.Email)),
+		DisplayName:     userInfo.DisplayName,
+		AvatarURL:       &userInfo.AvatarURL,
+		Status:          "active",
+		EmailVerifiedAt: &now,
+	}
+
+	if err := s.repos.Users().Create(ctx, user); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			return nil, utils.ErrEmailAlreadyExists
+		}
+		return nil, err
+	}
+
+	account := &models.AuthAccount{
+		Common:            models.Common{ID: utils.NewID(), CreatedAt: now, UpdatedAt: now},
+		UserID:            userID,
+		Provider:          provider,
+		ProviderAccountID: userInfo.ID,
+		AccessToken:       &token.AccessToken,
+		Scopes:            ptr(strings.Join(oauthScopes(provider), " ")),
+	}
+	if token.RefreshToken != "" {
+		account.RefreshToken = &token.RefreshToken
+	}
+	if !token.Expiry.IsZero() {
+		account.TokenExpiresAt = &token.Expiry
+	}
+	if err := s.repos.AuthAccounts().Create(ctx, account); err != nil {
+		return nil, err
+	}
+
+	var workspaceID *string
+	roles := []string{"user"}
+	permissions := []string{}
+
+	wid, err := s.createPrimaryWorkspace(ctx, userID, userInfo.DisplayName)
+	if err != nil {
+		return nil, err
+	}
+	workspaceID = &wid
+	roles = append(roles, "workspace:owner")
+
+	result, err := s.authSvc.createAuthenticatedSession(ctx, user, workspaceID, permissions, roles, meta)
+	if err != nil {
+		return nil, err
+	}
+
+	return &OAuthResult{AuthResult: result}, nil
+}
+
+func (s *OAuthService) handleLinkOAuth(ctx context.Context, provider string, userInfo *OAuthUserInfo, token *oauth2.Token, userID string) (*OAuthResult, error) {
+	if _, err := s.repos.AuthAccounts().GetByProvider(ctx, provider, userInfo.ID); err == nil {
+		return nil, utils.ErrOAuthAccountAlreadyLinked
+	}
+
+	existing, _ := s.repos.AuthAccounts().GetByUserIDAndProvider(ctx, userID, provider)
+	if existing != nil {
+		return nil, utils.ErrOAuthAccountAlreadyLinked
+	}
+
+	now := time.Now().UTC()
+	account := &models.AuthAccount{
+		Common:            models.Common{ID: utils.NewID(), CreatedAt: now, UpdatedAt: now},
+		UserID:            userID,
+		Provider:          provider,
+		ProviderAccountID: userInfo.ID,
+		AccessToken:       &token.AccessToken,
+		Scopes:            ptr(strings.Join(oauthScopes(provider), " ")),
+	}
+	if token.RefreshToken != "" {
+		account.RefreshToken = &token.RefreshToken
+	}
+	if !token.Expiry.IsZero() {
+		account.TokenExpiresAt = &token.Expiry
+	}
+	if err := s.repos.AuthAccounts().Create(ctx, account); err != nil {
+		return nil, err
+	}
+
+	return &OAuthResult{Linked: true}, nil
+}
+
+func (s *OAuthService) ListLinkedAccounts(ctx context.Context, userID string) ([]models.AuthAccount, error) {
+	return s.repos.AuthAccounts().ListByUserID(ctx, userID)
+}
+
+func (s *OAuthService) UnlinkAccount(ctx context.Context, userID, provider string) error {
+	account, err := s.repos.AuthAccounts().GetByUserIDAndProvider(ctx, userID, provider)
+	if err != nil {
+		return utils.ErrOAuthAccountNotFound
+	}
+	return s.repos.AuthAccounts().Delete(ctx, account.ID)
+}
+
+func (s *OAuthService) createPrimaryWorkspace(ctx context.Context, userID, displayName string) (string, error) {
+	now := time.Now().UTC()
+	workspaceID := utils.NewID()
+	slug := slugifyDisplayName(displayName)
+	workspace := &models.Workspace{
+		Common:      models.Common{ID: workspaceID, CreatedAt: now, UpdatedAt: now},
+		Name:        fmt.Sprintf("%s's Workspace", displayName),
+		Slug:        slug,
+		Visibility:  "private",
+		OwnerID:     userID,
+		Description: "Personal workspace",
+	}
+	if err := s.repos.Workspaces().Create(ctx, workspace); err != nil {
+		return "", err
+	}
+	member := &models.WorkspaceMember{
+		Common:      models.Common{ID: utils.NewID(), CreatedAt: now, UpdatedAt: now},
+		WorkspaceID: workspaceID,
+		UserID:      userID,
+		Role:        "owner",
+		JoinedAt:    now,
+	}
+	if err := s.repos.WorkspaceMembers().Create(ctx, member); err != nil {
+		return "", err
+	}
+	return workspaceID, nil
+}
+
+func (s *OAuthService) SetOAuthCookies(c *gin.Context, result *OAuthResult) {
+	if result.AuthResult != nil {
+		s.authSvc.SetRefreshCookie(c, result.AuthResult.RefreshToken)
+	}
+}
+
+func oauthScopes(provider string) []string {
+	switch provider {
+	case "github":
+		return []string{"read:user", "user:email"}
+	case "discord":
+		return []string{"identify", "email"}
+	case "apple":
+		return []string{"name", "email"}
+	default:
+		return []string{"openid", "profile", "email"}
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+func slugifyDisplayName(name string) string {
+	slug := strings.ToLower(name)
+	slug = strings.ReplaceAll(slug, " ", "-")
+	var result strings.Builder
+	for _, r := range slug {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			result.WriteRune(r)
+		}
+	}
+	slug = result.String()
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		slug = "workspace"
+	}
+	return slug
 }

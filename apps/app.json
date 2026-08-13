@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Kami-Sama",
+    "name": "Etheria Times",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./public/kami-sama.png",
+    "icon": "./public/etheriatimes.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -45,13 +45,13 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Autorisez Kami-Sama a utiliser Face ID pour deverrouiller l'application et confirmer votre identite."
+          "faceIDPermission": "Autorisez Etheria Times a utiliser Face ID pour deverrouiller l'application et confirmer votre identite."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Autorisez Kami-Sama a utiliser la camera pour rejoindre une reunion ou scanner une invitation."
+          "cameraPermission": "Autorisez Etheria Times a utiliser la camera pour rejoindre une reunion ou scanner une invitation."
         }
       ],
       "expo-font",

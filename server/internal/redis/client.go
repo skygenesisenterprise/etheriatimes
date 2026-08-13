@@ -39,7 +39,7 @@ func DefaultConfig() Config {
 		DB:             0,
 		Enabled:        false,
 		Required:       false,
-		KeyPrefix:      "etheriatimes:v1",
+		KeyPrefix:      "company-website:v1",
 		DefaultTTL:     5 * time.Minute,
 		ConnectTimeout: 5 * time.Second,
 		ReadTimeout:    3 * time.Second,

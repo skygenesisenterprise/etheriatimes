@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/docker/entrypoint.sh
 #
-# Postgres entrypoint wrapper for the kami-sama PostgreSQL image.
+# Postgres entrypoint wrapper for the Etheria Times PostgreSQL image.
 #
 # This script runs as the container's ENTRYPOINT and chains three steps:
 #

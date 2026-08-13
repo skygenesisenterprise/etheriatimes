@@ -1,8 +1,8 @@
 {
   "Servers": {
     "1": {
-      "Name": "kami-sama (dev)",
-      "Group": "Kami-Sama",
+      "Name": "etheriatimes (dev)",
+      "Group": "The Etheria Times",
       "Host": "postgresql",
       "Port": 5432,
       "MaintenanceDB": "postgres",

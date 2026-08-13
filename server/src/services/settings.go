@@ -1,202 +1,89 @@
 package services
 
 import (
-	"fmt"
-	"sync"
+	"context"
+	"encoding/json"
+	"strings"
+	"time"
 
-	"github.com/etheriatimes/etheriatimes/server/src/models"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/models"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/utils"
+	"gorm.io/datatypes"
 )
 
 type SettingsService struct {
-	stalwart *StalwartService
-	cache    map[string]*models.UserSettings
-	cacheMu  sync.RWMutex
+	repos *Repositories
 }
 
-func NewSettingsService(stalwart *StalwartService) *SettingsService {
-	return &SettingsService{
-		stalwart: stalwart,
-		cache:    make(map[string]*models.UserSettings),
-	}
+func NewSettingsService(repos *Repositories) *SettingsService {
+	return &SettingsService{repos: repos}
 }
 
-func (s *SettingsService) GetSettings(accountID string) (*models.UserSettings, error) {
-	s.cacheMu.RLock()
-	if cached, ok := s.cache[accountID]; ok {
-		s.cacheMu.RUnlock()
-		return cached, nil
-	}
-	s.cacheMu.RUnlock()
+func (s *SettingsService) GetSetting(ctx context.Context, key string) (*models.SystemSetting, error) {
+	return s.repos.SystemSettings().GetByKey(ctx, key)
+}
 
-	settings, err := s.stalwart.GetSettings(accountID)
+func (s *SettingsService) ListSettings(ctx context.Context, category string) ([]models.SystemSetting, error) {
+	return s.repos.SystemSettings().List(ctx, category)
+}
+
+func (s *SettingsService) UpsertSetting(ctx context.Context, key string, value any, category, description string) (*models.SystemSetting, error) {
+	if strings.TrimSpace(key) == "" {
+		return nil, utils.ErrValidationFailed
+	}
+	var jsonValue []byte
+	switch v := value.(type) {
+	case []byte:
+		jsonValue = v
+	case string:
+		jsonValue = []byte(v)
+	default:
+		var err error
+		jsonValue, err = json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+	}
+	now := time.Now().UTC()
+	setting := &models.SystemSetting{
+		Common:      models.Common{ID: utils.NewID(), CreatedAt: now, UpdatedAt: now},
+		Key:         key,
+		Category:    category,
+		Description: description,
+		Value:       datatypes.JSON(jsonValue),
+	}
+	if err := s.repos.SystemSettings().Upsert(ctx, setting); err != nil {
+		return nil, err
+	}
+	return setting, nil
+}
+
+func (s *SettingsService) DeleteSetting(ctx context.Context, key string) error {
+	return s.repos.SystemSettings().Delete(ctx, key)
+}
+
+func (s *SettingsService) GetSeoMeta(ctx context.Context, pagePath string) (*models.SeoMeta, error) {
+	var meta models.SeoMeta
+	err := s.repos.db.WithContext(ctx).Where("page_path = ?", pagePath).First(&meta).Error
 	if err != nil {
 		return nil, err
 	}
-
-	s.cacheMu.Lock()
-	s.cache[accountID] = settings
-	s.cacheMu.Unlock()
-
-	return settings, nil
+	return &meta, nil
 }
 
-func (s *SettingsService) UpdateSettings(req *models.UpdateSettingsRequest) (*models.UserSettings, error) {
-	settings, err := s.stalwart.UpdateSettings(req)
-	if err != nil {
+func (s *SettingsService) UpsertSeoMeta(ctx context.Context, pagePath, title, description, keywords, ogImage, canonicalUrl string) (*models.SeoMeta, error) {
+	now := time.Now().UTC()
+	meta := &models.SeoMeta{
+		Common:       models.Common{ID: utils.NewID(), CreatedAt: now, UpdatedAt: now},
+		PagePath:     pagePath,
+		Title:        title,
+		Description:  description,
+		Keywords:     keywords,
+		OgImage:      ogImage,
+		CanonicalUrl: canonicalUrl,
+	}
+	if err := s.repos.db.WithContext(ctx).Where("page_path = ?", pagePath).Save(meta).Error; err != nil {
 		return nil, err
 	}
-
-	s.cacheMu.Lock()
-	s.cache[req.AccountID] = settings
-	s.cacheMu.Unlock()
-
-	return settings, nil
-}
-
-func (s *SettingsService) GetEmailSettings(accountID string) (*models.EmailSettings, error) {
-	settings, err := s.GetSettings(accountID)
-	if err != nil {
-		return nil, err
-	}
-	return settings.EmailSettings, nil
-}
-
-func (s *SettingsService) GetDisplaySettings(accountID string) (*models.DisplaySettings, error) {
-	settings, err := s.GetSettings(accountID)
-	if err != nil {
-		return nil, err
-	}
-	return settings.DisplaySettings, nil
-}
-
-func (s *SettingsService) GetNotificationSettings(accountID string) (*models.NotificationSettings, error) {
-	settings, err := s.GetSettings(accountID)
-	if err != nil {
-		return nil, err
-	}
-	return settings.NotificationSettings, nil
-}
-
-func (s *SettingsService) GetComposeSettings(accountID string) (*models.ComposeSettings, error) {
-	settings, err := s.GetSettings(accountID)
-	if err != nil {
-		return nil, err
-	}
-	return settings.ComposeSettings, nil
-}
-
-func (s *SettingsService) GetPrivacySettings(accountID string) (*models.PrivacySettings, error) {
-	settings, err := s.GetSettings(accountID)
-	if err != nil {
-		return nil, err
-	}
-	return settings.PrivacySettings, nil
-}
-
-func (s *SettingsService) UpdateEmailSettings(accountID string, emailSettings *models.EmailSettings) error {
-	_, err := s.UpdateSettings(&models.UpdateSettingsRequest{
-		AccountID:     accountID,
-		EmailSettings: emailSettings,
-	})
-	return err
-}
-
-func (s *SettingsService) UpdateDisplaySettings(accountID string, displaySettings *models.DisplaySettings) error {
-	_, err := s.UpdateSettings(&models.UpdateSettingsRequest{
-		AccountID:       accountID,
-		DisplaySettings: displaySettings,
-	})
-	return err
-}
-
-func (s *SettingsService) UpdateNotificationSettings(accountID string, notificationSettings *models.NotificationSettings) error {
-	_, err := s.UpdateSettings(&models.UpdateSettingsRequest{
-		AccountID:            accountID,
-		NotificationSettings: notificationSettings,
-	})
-	return err
-}
-
-func (s *SettingsService) UpdateComposeSettings(accountID string, composeSettings *models.ComposeSettings) error {
-	_, err := s.UpdateSettings(&models.UpdateSettingsRequest{
-		AccountID:       accountID,
-		ComposeSettings: composeSettings,
-	})
-	return err
-}
-
-func (s *SettingsService) UpdatePrivacySettings(accountID string, privacySettings *models.PrivacySettings) error {
-	_, err := s.UpdateSettings(&models.UpdateSettingsRequest{
-		AccountID:       accountID,
-		PrivacySettings: privacySettings,
-	})
-	return err
-}
-
-func (s *SettingsService) ClearCache(accountID string) {
-	s.cacheMu.Lock()
-	delete(s.cache, accountID)
-	s.cacheMu.Unlock()
-}
-
-func (s *SettingsService) ClearAllCache() {
-	s.cacheMu.Lock()
-	s.cache = make(map[string]*models.UserSettings)
-	s.cacheMu.Unlock()
-}
-
-func (s *SettingsService) GetVacationResponder(accountID string) (*models.VacationResponder, error) {
-	return s.stalwart.GetVacationResponder(accountID)
-}
-
-func (s *SettingsService) UpdateVacationResponder(req *models.UpdateVacationResponderRequest) (*models.VacationResponder, error) {
-	return s.stalwart.UpdateVacationResponder(req)
-}
-
-func (s *SettingsService) GetFilterRules(accountID string) (*models.FilterRuleList, error) {
-	return s.stalwart.GetFilterRules(accountID)
-}
-
-func (s *SettingsService) CreateFilterRule(req *models.CreateFilterRuleRequest) (*models.FilterRule, error) {
-	return s.stalwart.CreateFilterRule(req)
-}
-
-func (s *SettingsService) UpdateFilterRule(req *models.UpdateFilterRuleRequest) (*models.FilterRule, error) {
-	return s.stalwart.UpdateFilterRule(req)
-}
-
-func (s *SettingsService) DeleteFilterRule(accountID, ruleID string) error {
-	return s.stalwart.DeleteFilterRule(accountID, ruleID)
-}
-
-func (s *SettingsService) GetSignatures(accountID string) ([]*models.Signature, error) {
-	return s.stalwart.GetSignatures(accountID)
-}
-
-func (s *SettingsService) CreateSignature(req *models.CreateSignatureRequest) (*models.Signature, error) {
-	return s.stalwart.CreateSignature(req)
-}
-
-func (s *SettingsService) UpdateSignature(req *models.UpdateSignatureRequest) (*models.Signature, error) {
-	return s.stalwart.UpdateSignature(req)
-}
-
-func (s *SettingsService) DeleteSignature(accountID, signatureID string) error {
-	return s.stalwart.DeleteSignature(accountID, signatureID)
-}
-
-func (s *SettingsService) GetLabels(accountID string) ([]*models.Label, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *SettingsService) CreateLabel(req *models.CreateLabelRequest) (*models.Label, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *SettingsService) UpdateLabel(labelID string, req *models.UpdateLabelRequest) (*models.Label, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *SettingsService) DeleteLabel(labelID string) error {
-	return fmt.Errorf("not implemented")
+	return meta, nil
 }

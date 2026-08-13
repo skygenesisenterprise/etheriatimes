@@ -2,134 +2,116 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	redisclient "github.com/etheriatimes/etheriatimes/server/internal/redis"
-	"github.com/etheriatimes/etheriatimes/server/src/config"
-	"github.com/etheriatimes/etheriatimes/server/src/interfaces"
-	"github.com/etheriatimes/etheriatimes/server/src/middleware"
-	"github.com/etheriatimes/etheriatimes/server/src/routes"
-	"github.com/etheriatimes/etheriatimes/server/src/services"
-	"gorm.io/gorm"
+	redisclient "github.com/skygenesisenterprise/etheriatimes/server/internal/redis"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/config"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/middleware"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/routes"
+	"github.com/skygenesisenterprise/etheriatimes/server/src/services"
 )
 
-func displayBanner() {
-	fmt.Printf("\n")
-	fmt.Printf("\033[1;36m    ██╗    ██╗██╗  ██╗ █████╗ ████████╗██╗  ██╗███████╗████████╗\n")
-	fmt.Printf("\033[1;36m    ██║    ██║██║  ██║██╔══██╗╚══██╔══╝██║  ██║██╔════╝╚══██╔══╝\n")
-	fmt.Printf("\033[1;36m    ██║ █╗ ██║███████║███████║   ██║   ███████║█████╗     ██║   \n")
-	fmt.Printf("\033[1;36m    ██║███╗██║██╔══██║██╔══██║   ██║   ██╔══██║██╔══╝     ██║   \n")
-	fmt.Printf("\033[1;36m    ╚███╔███╔╝██║  ██║██║  ██║   ██║   ██║  ██║███████╗   ██║   \n")
-	fmt.Printf("\033[0;37m")
-	fmt.Printf("\n")
-	fmt.Printf("\033[1;33m    ╔══════════════════════════════════════════════════════════════╗\n")
-	fmt.Printf("\033[1;33m    ║                     Etheria Times                            ║\n")
-	fmt.Printf("\033[1;33m    ║               Enterprise Account Management                  ║\n")
-	fmt.Printf("\033[1;33m    ║                   Version 1.0.0-alpha                        ║\n")
-	fmt.Printf("\033[1;33m    ╚══════════════════════════════════════════════════════════════╝\n")
-	fmt.Printf("\033[0;37m")
-	fmt.Printf("\n")
-	fmt.Printf("\033[1;32m[✓] System Architecture: %s\033[0m\n", runtime.GOARCH)
-	fmt.Printf("\033[1;32m[✓] Operating System: %s\033[0m\n", runtime.GOOS)
-	fmt.Printf("\033[1;32m[✓] Go Version: %s\033[0m\n", runtime.Version())
-	fmt.Printf("\033[1;32m[✓] CPU Cores: %d\033[0m\n", runtime.NumCPU())
-	fmt.Printf("\033[1;32m[✓] Process ID: %d\033[0m\n", os.Getpid())
-	fmt.Printf("\n")
+type runtimeMode string
+
+const (
+	modeAPI    runtimeMode = "api"
+	modeServer runtimeMode = "server"
+)
+
+func connectDatabase(ctx context.Context, logger *slog.Logger, cfg config.Config) (*services.DatabaseService, error) {
+	db, err := services.NewDatabaseService(cfg.Database.URL)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	if err := db.Ping(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping database: %w", err)
+	}
+
+	logger.Info(
+		"database connected",
+		"service", "database",
+		"host", cfg.Database.Host,
+		"port", cfg.Database.Port,
+		"name", cfg.Database.Name,
+	)
+
+	return db, nil
+}
+
+func parseRuntimeMode(args []string) (runtimeMode, error) {
+	if len(args) == 0 {
+		return modeAPI, nil
+	}
+	switch runtimeMode(args[0]) {
+	case modeAPI, modeServer:
+		return modeAPI, nil
+	default:
+		return "", fmt.Errorf("unknown mode %q", args[0])
+	}
+}
+
+func runHTTPServer(ctx context.Context, logger *slog.Logger, cfg config.Config, handler http.Handler, serviceRole runtimeMode) error {
+	server := &http.Server{
+		Addr:    ":" + cfg.Server.Port,
+		Handler: handler,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("server starting", "service", "http", "port", cfg.Server.Port, "mode", string(serviceRole))
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return server.Shutdown(shutdownCtx)
+	case err := <-errCh:
+		return err
+	}
 }
 
 func main() {
-	if os.Getenv("GIN_MODE") == "release" {
+	cfg, err := config.Load()
+	if err != nil {
+		panic(err)
+	}
+	if cfg.App.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	displayBanner()
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	cfg := config.LoadConfig()
+	db, err := connectDatabase(context.Background(), logger, cfg)
+	if err != nil {
+		logger.Error("database connection failed", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
 
-	var dbService interfaces.IDatabaseService
-	var db *gorm.DB
-
-	useEmbeddedDB := os.Getenv("USE_EMBEDDED_DB") == "true"
-
-	if useEmbeddedDB {
-		dbHost := os.Getenv("DB_HOST")
-		if dbHost == "" {
-			dbHost = "localhost"
-		}
-		dbPort := os.Getenv("DB_PORT")
-		if dbPort == "" {
-			dbPort = "5432"
-		}
-		dbUser := os.Getenv("DB_USER")
-		if dbUser == "" {
-			dbUser = "aether"
-		}
-		dbName := os.Getenv("DB_NAME")
-		if dbName == "" {
-			dbName = "etheria_account"
-		}
-		dbPassword := os.Getenv("DB_PASSWORD")
-		if dbPassword == "" {
-			dbPassword = os.Getenv("POSTGRES_PASSWORD")
-			if dbPassword == "" {
-				dbPassword = "password"
-			}
-		}
-
-		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-			dbHost, dbUser, dbPassword, dbName, dbPort)
-
-		var err error
-		dbService, err = services.NewDatabaseService(dsn)
-		if err != nil {
-			fmt.Printf("\033[1;33m[!] Warning: Failed to connect to embedded database: %v\033[0m\n", err)
-			fmt.Printf("\033[1;33m[!] Running in database-less mode\033[0m\n")
-		} else {
-			db = dbService.GetDB()
-			fmt.Printf("\033[1;32m[✓] Embedded database connected\033[0m\n")
-
-			services.DB = db
-			fmt.Printf("\033[1;32m[✓] Global DB reference initialized\033[0m\n")
-
-			serviceKeyService := services.NewServiceKeyService(db)
-			if err := serviceKeyService.EnsureSystemKey(cfg.SystemKey); err != nil {
-				fmt.Printf("\033[1;33m[!] Warning: Failed to ensure system key in database: %v\033[0m\n", err)
-			} else {
-				fmt.Printf("\033[1;32m[✓] System key validated in database\033[0m\n")
-			}
-		}
-	} else if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		var err error
-		dbService, err = services.NewDatabaseService(dsn)
-		if err != nil {
-			fmt.Printf("\033[1;31m[✗] Failed to connect to database: %v\033[0m\n", err)
-			os.Exit(1)
-		}
-		db = dbService.GetDB()
-		fmt.Printf("\033[1;32m[✓] Database connected\033[0m\n")
-
-		services.DB = db
-		fmt.Printf("\033[1;32m[✓] Global DB reference initialized\033[0m\n")
-
-		serviceKeyService := services.NewServiceKeyService(db)
-		if err := serviceKeyService.EnsureSystemKey(cfg.SystemKey); err != nil {
-			fmt.Printf("\033[1;33m[!] Warning: Failed to ensure system key in database: %v\033[0m\n", err)
-		} else {
-			fmt.Printf("\033[1;32m[✓] System key validated in database\033[0m\n")
-		}
-	} else {
-		fmt.Printf("\033[1;33m[!] Warning: DATABASE_URL not set and USE_EMBEDDED_DB not enabled, running in database-less mode\033[0m\n")
+	if err := db.AutoMigrate(); err != nil {
+		logger.Error("database migration failed", "error", err)
+		os.Exit(1)
 	}
 
-	rdbCfg := redisclient.Config{
+	redis, err := redisclient.New(redisclient.Config{
 		Enabled:        cfg.Redis.Enabled,
 		Required:       cfg.Redis.Required,
 		URL:            cfg.Redis.URL,
@@ -138,86 +120,108 @@ func main() {
 		Password:       cfg.Redis.Password,
 		DB:             cfg.Redis.DB,
 		KeyPrefix:      cfg.Redis.KeyPrefix,
-		DefaultTTL:     time.Duration(cfg.Redis.DefaultTTL) * time.Second,
-		ConnectTimeout: time.Duration(cfg.Redis.ConnectTimeout) * time.Second,
-		ReadTimeout:    time.Duration(cfg.Redis.ReadTimeout) * time.Second,
-		WriteTimeout:   time.Duration(cfg.Redis.WriteTimeout) * time.Second,
+		DefaultTTL:     cfg.Redis.DefaultTTL,
+		ConnectTimeout: cfg.Redis.ConnectTimeout,
+		ReadTimeout:    cfg.Redis.ReadTimeout,
+		WriteTimeout:   cfg.Redis.WriteTimeout,
 		MaxRetries:     cfg.Redis.MaxRetries,
-	}
-
-	redisClient, err := redisclient.New(rdbCfg)
+	})
 	if err != nil {
-		fmt.Printf("\033[1;31m[✗] Failed to initialize Redis: %v\033[0m\n", err)
+		logger.Error("redis initialization failed", "error", err)
 		os.Exit(1)
 	}
-
-	if redisClient != nil {
-		fmt.Printf("\033[1;32m[✓] Redis connection established\033[0m\n")
-	} else if cfg.Redis.Enabled {
-		fmt.Printf("\033[1;33m[!] Redis unavailable; continuing without cache\033[0m\n")
-	} else {
-		fmt.Printf("\033[1;33m[!] Redis disabled\033[0m\n")
-	}
-
-	router := gin.New()
-	router.Use(gin.Recovery())
-	if os.Getenv("API_ACCESS_LOGS") == "true" {
-		router.Use(middleware.Logger(middleware.LogConfig{
-			EnableBody:   false,
-			EnableHeader: false,
-			EnableQuery:  false,
-		}))
-	}
-
-	router.Use(middleware.AdaptiveCORSMiddleware())
-
-	routes.SetupRoutes(router, cfg.SystemKey, services.NewServiceKeyService(db), dbService, redisClient)
-
-	addr := fmt.Sprintf(":%s", cfg.Port)
-	fmt.Printf("\033[1;32m[✓] Server starting on %s\033[0m\n", addr)
-	fmt.Printf("\033[1;36m[✓] API available at http://localhost%s/api/v1\033[0m\n", addr)
-	fmt.Printf("\n")
-
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: router,
-	}
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("\033[1;31m[✗] Failed to start server: %v\033[0m\n", err)
-			os.Exit(1)
+	defer func() {
+		if redis != nil {
+			_ = redis.Close()
 		}
 	}()
 
-	<-quit
-	fmt.Printf("\033[1;33m[!] Shutting down server...\033[0m\n")
+	repos := services.NewRepositories(db.Gorm())
+	identityProvider := services.NewIdentityProvider(cfg.Auth, repos)
+	authLimiter := services.NewAuthRateLimiter(redis)
+	eventBus := services.NewEventBus(cfg, redis)
+	defer eventBus.Close()
+	presence := services.NewPresenceService(logger, redis, eventBus, repos.Users(), 75*time.Second)
+	defer presence.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	userService := services.NewUserService(repos.Users(), repos.UserSettings(), repos.NotificationPreferences(), presence)
+	workspaceService := services.NewWorkspaceService(db, cfg.Auth, repos.Users(), repos)
+	authService := services.NewAuthService(cfg.Auth, db, repos, identityProvider, authLimiter, workspaceService)
 
-	if err := srv.Shutdown(ctx); err != nil {
-		fmt.Printf("\033[1;31m[✗] Server forced to shutdown: %v\033[0m\n", err)
+	// S'assurer que le premier utilisateur a les rôles superadmin
+	if err := authService.EnsureFirstUserHasAdminRoles(context.Background()); err != nil {
+		logger.Warn("failed to ensure first user has admin roles", "error", err)
 	}
 
-	if redisClient != nil {
-		if err := redisClient.Close(); err != nil {
-			fmt.Printf("\033[1;33m[!] Warning: Redis close error: %v\033[0m\n", err)
-		} else {
-			fmt.Printf("\033[1;32m[✓] Redis connection closed\033[0m\n")
-		}
+	oauthService := services.NewOAuthService(cfg.OAuth, repos, authService, identityProvider, workspaceService, nil)
+
+
+	studioService := services.NewStudioService(repos)
+	watchService := services.NewWatchService(repos)
+	schedulingService := services.NewSchedulingService(repos)
+	notificationService := services.NewNotificationService(repos)
+	searchService := services.NewSearchService(repos)
+	settingsService := services.NewSettingsService(repos)
+	adminUserService := services.NewAdminUserService(repos)
+	adminProfileService := services.NewAdminProfileService(repos)
+	adminRoleService := services.NewAdminRoleService(repos)
+	adminPermissionService := services.NewAdminPermissionService(repos)
+	supportService := services.NewSupportService(repos)
+	contactAdminService := services.NewContactAdminService(repos)
+	moderationService := services.NewModerationService(repos)
+	notificationAdminService := services.NewNotificationAdminService(repos)
+	systemService := services.NewSystemService(db.Gorm(), redis)
+	settingsAdminService := services.NewSettingsAdminService(db.Gorm(), repos)
+	mfaService := services.NewMfaService(cfg.Auth, db, repos)
+
+	mode, err := parseRuntimeMode(os.Args[1:])
+	if err != nil {
+		logger.Error("unknown mode", "error", err)
+		os.Exit(1)
 	}
 
-	if dbService != nil {
-		if err := dbService.Close(); err != nil {
-			fmt.Printf("\033[1;33m[!] Warning: Database close error: %v\033[0m\n", err)
-		} else {
-			fmt.Printf("\033[1;32m[✓] Database connection closed\033[0m\n")
-		}
+	router := gin.New()
+	router.Use(middleware.RequestID(), middleware.Recovery(logger), middleware.CORS(cfg.CORS.AllowedOrigins))
+	if cfg.App.AccessLogs {
+		router.Use(middleware.Logging(logger))
 	}
+	if len(cfg.App.TrustedProxies) > 0 {
+		_ = router.SetTrustedProxies(cfg.App.TrustedProxies)
+	}
+	routes.SetupRoutes(router, routes.Dependencies{
+		Config:                   cfg,
+		Logger:                   logger,
+		Database:                 db,
+		Redis:                    redis,
+		EventBus:                 eventBus,
+		IdentityProvider:         identityProvider,
+		AuthService:              authService,
+		OAuthService:             oauthService,
+		UserService:              userService,
+		WorkspaceService:         workspaceService,
+		Repos:                    repos,
+		StudioService:            studioService,
+		WatchService:             watchService,
+		SchedulingService:        schedulingService,
+		NotificationService:      notificationService,
+		SearchService:            searchService,
+		SettingsService:          settingsService,
+		AdminUserService:         adminUserService,
+		AdminProfileService:      adminProfileService,
+		AdminRoleService:         adminRoleService,
+		AdminPermissionService:   adminPermissionService,
+		SystemService:            systemService,
+		SupportService:           supportService,
+		ContactAdminService:      contactAdminService,
+		ModerationService:        moderationService,
+		NotificationAdminService: notificationAdminService,
+		SettingsAdminService:     settingsAdminService,
+		MfaService:               mfaService,
+		RuntimeRole:              string(mode),
+	})
 
-	fmt.Printf("\033[1;32m[✓] Server exited cleanly\033[0m\n")
+	if err := runHTTPServer(ctx, logger, cfg, router, mode); err != nil {
+		logger.Error("server stopped unexpectedly", "error", err)
+		os.Exit(1)
+	}
 }

@@ -1,203 +1,374 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import * as React from "react";
 import { useRouter } from "next/navigation";
-import { authApi, type TokenResponse } from "@/lib/api/auth";
+import { authApi, refreshAccessToken } from "@/lib/api/auth";
+import type { RegisterPayload } from "@/lib/api/auth";
+import { LOGIN_ROUTE } from "@/lib/routes";
+import { setSharedCookie, deleteSharedCookie } from "@/lib/shared-cookie";
 import type { User } from "@/lib/api/types";
+import type { PersistedSession } from "@/lib/api/session-persistence";
+import {
+  initSessionPersistence,
+  saveSession,
+  loadSession,
+  clearSession,
+  updateSessionTokens,
+  updateSessionUser,
+  getSessionPreferences,
+  saveSessionPreferences,
+  subscribeToSessionChanges,
+  startAutoRefresh,
+  migrateLegacySession,
+} from "@/lib/api/session-persistence";
 
-interface AuthContextType {
+type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+
+interface AuthContextValue {
   user: User | null;
+  accessToken: string | null;
+  hasActiveSession: boolean;
+  status: AuthStatus;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  loginWithOAuth: (provider: "github" | "google") => Promise<void>;
-  logout: () => Promise<void>;
-  checkAuth: () => Promise<void>;
+  sessionPreferences: {
+    rememberMe: boolean;
+    autoRefresh: boolean;
+    syncAcrossTabs: boolean;
+  };
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  register: (payload: RegisterPayload, rememberMe?: boolean) => Promise<void>;
+  logout: (redirectTo?: string) => Promise<void>;
+  refresh: () => Promise<string | null>;
+  loadCurrentUser: () => Promise<User | null>;
+  setSessionPreference: (pref: string, value: boolean) => void;
+  clearSession: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = React.createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthChecked, setIsAuthChecked] = useState(false);
   const router = useRouter();
-  const hasCheckedAuth = useRef(false);
+  const [user, setUser] = React.useState<User | null>(null);
+  const [accessToken, setAccessToken] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<AuthStatus>("loading");
+  const [sessionPreferences, setSessionPreferences] = React.useState({
+    rememberMe: true,
+    autoRefresh: true,
+    syncAcrossTabs: true,
+  });
 
-  const checkAuth = useCallback(async () => {
-    if (hasCheckedAuth.current) {
-      return;
-    }
-    hasCheckedAuth.current = true;
+  // Initialize session persistence on mount
+  React.useEffect(() => {
+    initSessionPersistence();
+    migrateLegacySession();
+    
+    // Load preferences
+    const prefs = getSessionPreferences();
+    setSessionPreferences({
+      rememberMe: prefs.rememberMe,
+      autoRefresh: prefs.autoRefresh,
+      syncAcrossTabs: prefs.syncAcrossTabs,
+    });
+  }, []);
 
-    setIsLoading(true);
-    try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const storedUser = typeof window !== "undefined" ? authApi.getStoredUser() : null;
+  // Subscribe to session changes from other tabs.
+  // IMPORTANT: skip the initial synchronous callback when status is still
+  // "loading" — the bootstrap effect handles the first auth decision.
+  // Without this guard, navigating to a new subdomain (e.g. studios)
+  // would immediately set "unauthenticated" (localStorage is per-origin)
+  // before the cookie-based refresh has a chance to succeed.
+  React.useEffect(() => {
+    const unsubscribe = subscribeToSessionChanges((session: PersistedSession | null) => {
+      if (session) {
+        setAccessToken(session.accessToken);
+        setUser(session.user);
+        setStatus("authenticated");
+      } else {
+        setAccessToken(null);
+        setUser(null);
+        setStatus((prev) => (prev === "loading" ? prev : "unauthenticated"));
+      }
+    });
+    
+    return unsubscribe;
+  }, []);
 
-      console.log(
-        "[AuthContext] checkAuth - storedUser:",
-        !!storedUser,
-        "token:",
-        token ? `exists (${token?.length})` : "null"
-      );
-
-      if (token && token.length > 0 && token !== "undefined" && token !== "null") {
-        if (storedUser) {
-          console.log("[AuthContext] Token exists, verifying with API...");
-          try {
-            const accountResponse = await authApi.getAccount();
-            if (accountResponse.success && accountResponse.data?.user) {
-              authApi.storeUser(accountResponse.data.user);
-              setUser(accountResponse.data.user);
-            } else {
-              console.log("[AuthContext] API verification returned error, clearing session");
-              authApi.clearTokens();
-              authApi.clearUser();
-              setUser(null);
-            }
-          } catch (e) {
-            console.error("[AuthContext] API verification error:", e);
-            authApi.clearTokens();
-            authApi.clearUser();
-            setUser(null);
-          }
-        } else {
-          console.log("[AuthContext] Token exists but no stored user, fetching account");
-          try {
-            const accountResponse = await authApi.getAccount();
-            if (accountResponse.success && accountResponse.data?.user) {
-              authApi.storeUser(accountResponse.data.user);
-              setUser(accountResponse.data.user);
-            } else {
-              console.log("[AuthContext] Could not fetch account, clearing session");
-              authApi.clearTokens();
-              authApi.clearUser();
-              setUser(null);
-            }
-          } catch (e) {
-            console.error("[AuthContext] Error fetching account:", e);
-            authApi.clearTokens();
-            authApi.clearUser();
-            setUser(null);
+  // Setup auto-refresh
+  React.useEffect(() => {
+    if (!sessionPreferences.autoRefresh) return;
+    
+    const unsubscribe = startAutoRefresh(async () => {
+      try {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          const session = loadSession();
+          if (session) {
+            updateSessionTokens(
+              newToken,
+              session.refreshToken,
+              3600
+            );
+            setAccessToken(newToken);
+            return true;
           }
         }
-      } else {
-        console.log("[AuthContext] No valid token found");
-        authApi.clearTokens();
-        authApi.clearUser();
-        setUser(null);
+        return false;
+      } catch {
+        return false;
       }
-    } catch (e) {
-      console.error("[AuthContext] checkAuth error:", e);
-      authApi.clearTokens();
-      authApi.clearUser();
+    }, 60 * 1000); // Check every minute
+    
+    return unsubscribe;
+  }, [sessionPreferences.autoRefresh]);
+
+  const loadCurrentUser = React.useCallback(async () => {
+    try {
+      const nextUser = await authApi.getCurrentUser();
+      setUser(nextUser);
+      updateSessionUser(nextUser);
+      return nextUser;
+    } catch {
       setUser(null);
-    } finally {
-      setIsLoading(false);
-      setIsAuthChecked(true);
+      return null;
     }
   }, []);
 
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  const login = async (email: string, password: string) => {
-    setIsLoading(true);
+  const refresh = React.useCallback(async () => {
     try {
-      const response = await authApi.login(email, password);
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        const session = loadSession();
+        if (session) {
+          updateSessionTokens(
+            newToken,
+            session.refreshToken,
+            3600
+          );
+          setAccessToken(newToken);
+          setUser(session.user);
+          updateSessionUser(session.user);
+          setStatus("authenticated");
+          return newToken;
+        }
+      }
+    } catch {
+      // Refresh failed
+    }
+    
+    const session = loadSession();
+    if (session) {
+      setAccessToken(session.accessToken);
+      setUser(session.user);
+      setStatus("authenticated");
+      return session.accessToken;
+    }
+    
+    setAccessToken(null);
+    setUser(null);
+    setStatus("unauthenticated");
+    return null;
+  }, []);
 
-      console.log("[AuthContext] Login response:", response);
+  // Initial bootstrap
+  React.useEffect(() => {
+    let cancelled = false;
 
-      if (!response.success || !response.data) {
-        throw new Error(response.error || "Login failed");
+    async function bootstrap() {
+      let nextUser: User | null = null;
+      try {
+        nextUser = await authApi.bootstrap();
+      } catch {
+        // Bootstrap failed (network error, invalid session, etc.)
+      }
+      if (cancelled) {
+        return;
       }
 
-      const { accessToken, refreshToken, user: userData } = response.data;
-
-      authApi.storeTokens(accessToken || "", refreshToken || "");
-      authApi.storeUser(userData);
-      setUser(userData);
-
-      console.log("[AuthContext] Login successful, user set, redirecting...");
-
-      const isAdmin = email.toLowerCase().endsWith("@etheriatimes.com");
-      const redirectTo = isAdmin ? "/dashboard" : "/user";
-      console.log("[AuthContext] Redirecting to:", redirectTo);
-      router.push(redirectTo);
-    } catch (error) {
-      console.error("[AuthContext] Login error:", error);
-      throw error;
-    } finally {
-      setIsLoading(false);
+      // authApi.bootstrap() validates the stored tokens. If it can't refresh,
+      // the session is invalid and we must not render the account UI as logged-in.
+      if (nextUser) {
+        setAccessToken(authApi.getStoredToken());
+        setUser(nextUser);
+        setStatus("authenticated");
+      } else {
+        clearSession();
+        setAccessToken(null);
+        setUser(null);
+        setStatus("unauthenticated");
+        deleteSharedCookie('kami_sama_access_token');
+        deleteSharedCookie('kami_sama_refresh');
+      }
     }
-  };
 
-  const loginWithOAuth = async (provider: "github" | "google") => {
-    const clientId = process.env.NEXT_PUBLIC_CLIENT_ID;
-    const redirectUri = `${window.location.origin}/oauth/callback`;
-    const scope = "openid profile email";
+    void bootstrap();
 
-    const state = Math.random().toString(36).substring(2);
-    sessionStorage.setItem("oauth_state", state);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    const identityApiUrl = process.env.NEXT_PUBLIC_IDENTITY_API_URL || window.location.origin;
-    const authUrl = new URL(`${identityApiUrl}/oauth/authorize`);
-    authUrl.searchParams.set("client_id", clientId || "");
-    authUrl.searchParams.set("redirect_uri", redirectUri);
-    authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", scope);
-    authUrl.searchParams.set("state", state);
-    authUrl.searchParams.set("provider", provider);
+  const setSessionPreference = React.useCallback((pref: string, value: boolean) => {
+    const currentPrefs = getSessionPreferences();
+    const updatedPrefs = { ...currentPrefs, [pref]: value };
+    saveSessionPreferences(updatedPrefs);
+    setSessionPreferences({
+      rememberMe: updatedPrefs.rememberMe,
+      autoRefresh: updatedPrefs.autoRefresh,
+      syncAcrossTabs: updatedPrefs.syncAcrossTabs,
+    });
+  }, []);
 
-    window.location.href = authUrl.toString();
-  };
+  const handleClearSession = React.useCallback(() => {
+    clearSession();
+    setAccessToken(null);
+    setUser(null);
+    setStatus("unauthenticated");
+    
+    // Clear cookies
+    deleteSharedCookie('kami_sama_access_token');
+    deleteSharedCookie('kami_sama_refresh');
+  }, []);
 
-  const logout = async () => {
-    try {
-      await authApi.logout();
-    } catch (error) {
-      console.error("Logout API error:", error);
-    } finally {
-      authApi.clearTokens();
-      authApi.clearUser();
-      setUser(null);
-      hasCheckedAuth.current = false;
-      router.push("/login");
-    }
-  };
+  function getRedirectTarget(): string {
+    if (typeof window === "undefined") return "/profile-change";
+    const params = new URLSearchParams(window.location.search);
+    return params.get("redirect") || "/profile-change";
+  }
 
-  const value = {
-    user,
-    isAuthenticated: !!user,
-    isLoading,
-    login,
-    loginWithOAuth,
-    logout,
-    checkAuth,
-  };
+  const login = React.useCallback(
+    async (email: string, password: string, rememberMe: boolean = true) => {
+      // Save preference
+      saveSessionPreferences({ rememberMe });
+      setSessionPreferences(prev => ({ ...prev, rememberMe }));
+      
+      const response = await authApi.login({ email, password });
+      
+      // Save session with persistence
+      saveSession(
+        response.accessToken,
+        response.refreshToken ?? "",
+        response.user,
+        response.sessionId ?? `session-${Date.now()}`,
+        response.expiresIn ?? 3600
+      );
+      
+      // Set cookies for server-side authentication
+      const maxAgeAccess = response.expiresIn ?? 3600;
+      if (rememberMe) {
+        setSharedCookie('kami_sama_access_token', response.accessToken, maxAgeAccess);
+      }
+      if (response.refreshToken) {
+        // 7 days for refresh token
+        setSharedCookie('kami_sama_refresh', response.refreshToken, 7 * 24 * 60 * 60);
+      }
+      
+      setAccessToken(response.accessToken);
+      setUser(response.user);
+      setStatus("authenticated");
+      
+      const target = getRedirectTarget();
+      if (typeof window !== "undefined") {
+        window.location.assign(target);
+        return;
+      }
+      router.replace(target);
+    },
+    [router]
+  );
+
+  const register = React.useCallback(
+    async (payload: RegisterPayload, rememberMe: boolean = true) => {
+      // Save preference
+      saveSessionPreferences({ rememberMe });
+      setSessionPreferences(prev => ({ ...prev, rememberMe }));
+      
+      const response = await authApi.register(payload);
+      
+      // Save session with persistence
+      saveSession(
+        response.accessToken,
+        response.refreshToken ?? "",
+        response.user,
+        response.sessionId ?? `session-${Date.now()}`,
+        response.expiresIn ?? 3600
+      );
+      
+      // Set cookies for server-side authentication
+      const maxAgeAccess = response.expiresIn ?? 3600;
+      if (rememberMe) {
+        setSharedCookie('kami_sama_access_token', response.accessToken, maxAgeAccess);
+      }
+      if (response.refreshToken) {
+        setSharedCookie('kami_sama_refresh', response.refreshToken, 7 * 24 * 60 * 60);
+      }
+      
+      setAccessToken(response.accessToken);
+      setUser(response.user);
+      setStatus("authenticated");
+      
+      const target = getRedirectTarget();
+      if (typeof window !== "undefined") {
+        window.location.assign(target);
+        return;
+      }
+      router.replace(target);
+    },
+    [router]
+  );
+
+  const logout = React.useCallback(async (redirectTo?: string) => {
+    await authApi.logout();
+    handleClearSession();
+    
+    // Clear cookies
+    deleteSharedCookie('kami_sama_access_token');
+    deleteSharedCookie('kami_sama_refresh');
+    
+    const target = redirectTo || LOGIN_ROUTE;
+    router.push(target);
+    router.refresh();
+  }, [router, handleClearSession]);
+
+  const value = React.useMemo<AuthContextValue>(
+    () => ({
+      user,
+      accessToken,
+      hasActiveSession: Boolean(accessToken),
+      status,
+      isAuthenticated: status === "authenticated",
+      isLoading: status === "loading",
+      sessionPreferences,
+      login,
+      register,
+      logout,
+      refresh,
+      loadCurrentUser,
+      setSessionPreference,
+      clearSession: handleClearSession,
+    }),
+    [
+      accessToken,
+      loadCurrentUser,
+      login,
+      logout,
+      refresh,
+      register,
+      status,
+      user,
+      sessionPreferences,
+      setSessionPreference,
+      handleClearSession,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
+export function useAuth(): AuthContextValue {
+  const context = React.useContext(AuthContext);
+  if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-}
-
-export function useProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push("/login");
-    }
-  }, [isAuthenticated, isLoading, router]);
-
-  return { isAuthenticated, isLoading };
 }

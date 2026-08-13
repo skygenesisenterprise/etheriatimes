@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/docker/deploy-schema.sh
 #
-# Idempotent Prisma schema deployment helper for the kami-sama Postgres
+# Idempotent Prisma schema deployment helper for the Etheria Times Postgres
 # container.  Called by entrypoint.sh once PostgreSQL has finished initialising
 # and is accepting connections.
 #

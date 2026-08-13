@@ -41,27 +41,27 @@ import {
 const mainNavItems = [
   {
     title: "Tableau de bord",
-    href: "/dashboard",
+    href: "/dash",
     icon: LayoutDashboard,
   },
   {
     title: "Articles",
-    href: "/dashboard/articles",
+    href: "/dash/articles",
     icon: FileText,
   },
   {
     title: "Catégories",
-    href: "/dashboard/categories",
+    href: "/dash/categories",
     icon: FolderOpen,
   },
   {
     title: "Médias",
-    href: "/dashboard/medias",
+    href: "/dash/medias",
     icon: Image,
   },
   {
     title: "Dossiers",
-    href: "/dashboard/dossiers",
+    href: "/dash/dossiers",
     icon: BookOpen,
   },
 ];
@@ -69,57 +69,57 @@ const mainNavItems = [
 const managementNavItems = [
   {
     title: "Utilisateurs",
-    href: "/dashboard/users",
+    href: "/dash/users",
     icon: Users,
   },
   {
     title: "Commentaires",
-    href: "/dashboard/comments",
+    href: "/dash/comments",
     icon: MessageSquare,
   },
   {
     title: "Statistiques",
-    href: "/dashboard/analytics",
+    href: "/dash/analytics",
     icon: BarChart3,
   },
   {
     title: "Notifications",
-    href: "/dashboard/notifications",
+    href: "/dash/notifications",
     icon: Bell,
   },
   {
     title: "Abonnements",
-    href: "/dashboard/subscriptions",
+    href: "/dash/subscriptions",
     icon: CreditCard,
   },
   {
     title: "Publicités",
-    href: "/dashboard/advertising",
+    href: "/dash/advertising",
     icon: Megaphone,
   },
   {
     title: "Newsletter",
-    href: "/dashboard/newsletter",
+    href: "/dash/newsletter",
     icon: Mail,
   },
   {
     title: "API Keys",
-    href: "/dashboard/api-keys",
+    href: "/dash/api-keys",
     icon: Key,
   },
   {
     title: "SEO",
-    href: "/dashboard/seo",
+    href: "/dash/seo",
     icon: Search,
   },
   {
     title: "Audit Logs",
-    href: "/dashboard/audit-logs",
+    href: "/dash/audit-logs",
     icon: Shield,
   },
   {
     title: "Linker",
-    href: "/dashboard/linker",
+    href: "/dash/linker",
     icon: Image,
   },
 ];
@@ -127,12 +127,12 @@ const managementNavItems = [
 const settingsNavItems = [
   {
     title: "Paramètres",
-    href: "/dashboard/settings",
+    href: "/dash/settings",
     icon: Settings,
   },
   {
     title: "Logs",
-    href: "/dashboard/logs",
+    href: "/dash/logs",
     icon: Terminal,
   },
 ];
@@ -140,22 +140,22 @@ const settingsNavItems = [
 const socialNavItems = [
   {
     title: "Publications",
-    href: "/dashboard/publications",
+    href: "/dash/publications",
     icon: Share2,
   },
   {
     title: "Comptes sociaux",
-    href: "/dashboard/social-accounts",
+    href: "/dash/social-accounts",
     icon: Globe,
   },
   {
     title: "Planification",
-    href: "/dashboard/scheduling",
+    href: "/dash/scheduling",
     icon: Clock,
   },
   {
     title: "Statistiques sociales",
-    href: "/dashboard/social-analytics",
+    href: "/dash/social-analytics",
     icon: BarChart3,
   },
 ];
@@ -163,37 +163,37 @@ const socialNavItems = [
 const socialMediaNavItems = [
   {
     title: "X (Twitter)",
-    href: "/dashboard/social/twitter",
+    href: "/dash/social/twitter",
     icon: "twitter",
   },
   {
     title: "Facebook",
-    href: "/dashboard/social/facebook",
+    href: "/dash/social/facebook",
     icon: "facebook",
   },
   {
     title: "Instagram",
-    href: "/dashboard/social/instagram",
+    href: "/dash/social/instagram",
     icon: "instagram",
   },
   {
     title: "LinkedIn",
-    href: "/dashboard/social/linkedin",
+    href: "/dash/social/linkedin",
     icon: "linkedin",
   },
   {
     title: "YouTube",
-    href: "/dashboard/social/youtube",
+    href: "/dash/social/youtube",
     icon: "youtube",
   },
   {
     title: "Discord",
-    href: "/dashboard/social/discord",
+    href: "/dash/social/discord",
     icon: "discord",
   },
   {
     title: "Twitch",
-    href: "/dashboard/social/twitch",
+    href: "/dash/social/twitch",
     icon: "twitch",
   },
 ];
@@ -261,7 +261,7 @@ export function AdminSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       <SidebarHeader className="p-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/dash" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Newspaper className="h-4 w-4" />
           </div>
