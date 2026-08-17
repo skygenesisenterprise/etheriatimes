@@ -36,7 +36,7 @@ export default function VerifyEmailPage() {
   const searchParams = useSearchParams()
 
   const email = searchParams.get('email') || 'u•••@etheriatimes.com'
-  const redirect = (searchParams.get('redirect') || 'fr/discover').replace(/^\/+/, '')
+  const redirect = (searchParams.get('redirect') || 'fr').replace(/^\/+/, '')
 
   const [code, setCode] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)

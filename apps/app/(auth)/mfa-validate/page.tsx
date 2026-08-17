@@ -79,7 +79,7 @@ export default function MfaValidatePage() {
       })
 
       // Redirect to the intended destination
-      const redirect = searchParams.get('redirect') || '/fr/discover'
+      const redirect = searchParams.get('redirect') || '/fr'
       window.location.href = redirect.startsWith('http') ? redirect : getDomainUrl('main', redirect)
     } catch (err) {
       const newAttempts = attempts + 1
@@ -133,7 +133,7 @@ export default function MfaValidatePage() {
       })
 
       // Redirect to the intended destination
-      const redirect = searchParams.get('redirect') || '/fr/discover'
+      const redirect = searchParams.get('redirect') || '/fr'
       window.location.href = redirect.startsWith('http') ? redirect : getDomainUrl('main', redirect)
     } catch (err) {
       const newAttempts = attempts + 1

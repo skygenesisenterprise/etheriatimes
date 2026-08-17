@@ -29,14 +29,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     // Unauthenticated users: only allow public auth routes (login, register)
     if (!isAuthenticated && !isPublicAuthRoute) {
-      window.location.href = getDomainUrl('main', `/${routing.defaultLocale}/discover`);
+      window.location.href = getDomainUrl('main', `/${routing.defaultLocale}`);
       return;
     }
 
     // Authenticated users on non-auth routes return to the public platform.
     if (isAuthenticated && !isAllowedAuthenticatedRoute) {
       const locale = routing.defaultLocale;
-      window.location.href = getDomainUrl("main", `/${locale}/discover`);
+      window.location.href = getDomainUrl("main", `/${locale}`);
     }
   }, [isAuthenticated, isLoading, isAllowedAuthenticatedRoute, isPublicAuthRoute]);
 

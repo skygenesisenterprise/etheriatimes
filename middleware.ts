@@ -155,7 +155,7 @@ export default function proxy(request: NextRequest) {
           return NextResponse.redirect(new URL("/profile-change", request.url));
         }
         const locale = getLocaleFromCountry(getCountryFromRequest(request));
-        return NextResponse.redirect(new URL(`/${locale}/discover`, request.url));
+        return NextResponse.redirect(new URL(`/${locale}`, request.url));
       }
     }
   }
